@@ -1,424 +1,299 @@
 ﻿
 #include <D>
 #include <T>
+#warn all, stdout
+#warn LocalSameAsGlobal, off
 
 ; debug
-BoundFunc.prototype.DefineProp 'Func', {get: 
+BoundFunc.prototype.DefineProp 'Func', {get:
     (this) => ObjFromPtrAddRef(NumGet(ObjPtr(this), 5*A_PtrSize+0x10, 'ptr'))
 }
 BoundFunc.prototype.DefineProp 'Params', {get: 
     (this) => ObjFromPtrAddRef(NumGet(ObjPtr(this), 7*A_PtrSize+0x10, 'ptr'))
 }
 
-#include winrt_constants.ahk
 #include rtmetadata.ahk
+#include rtinterface.ahk
+#include windows.ahk
+#include hstring.ahk
+#include overload.ahk
+
+OnError((e, *) => D("> STACK:`n" e.Stack "> ======"))
 
 IID_IMetaDataImport := GUID("{7DAC8207-D3AE-4C75-9B67-92801A497D44}")
+CLSID_CorMetaDataDispenser := GUID("{E5CB7A31-7512-11d2-89CE-0080C792E5D8}")
+IID_IMetaDataDispenser := GUID("{809C652E-7396-11D2-9771-00A0C9B4D50C}")
+
 MAX_NAME_CCH := 1024
 
 IID_IMetaDataAssemblyImport := "{EE62470B-E94B-424e-9B7C-2F00C9249F93}"
 
-do_experiments()
-do_experiments() {
-if 0 {
-    winmd_file := "C:\Windows\System32\WinMetadata\Windows.Foundation.winmd"
+WaitSync(async) {
+    loop
+        sleep 10
+    until async.status.n
+    return async.GetResults()
+}
 
-    #DllLoad rometadata.dll
-    DllCall("rometadata.dll\MetaDataGetDispenser"
-        , "ptr", GUID("{E5CB7A31-7512-11d2-89CE-0080C792E5D8}") ; CLSID_CorMetaDataDispenser
-        , "ptr", GUID("{809C652E-7396-11D2-9771-00A0C9B4D50C}") ; IID_IMetaDataDispenser
-        , "ptr*", mdd := ComValue(13, 0)
-        , "hresult")
-    ; IMetaDataDispenser::OpenScope
-    ComCall(4, mdd, "wstr", winmd_file, "uint", 0
-        , "ptr", IID_IMetaDataImport
-        , "ptr*", mdi := ComValue(13, 0))
-    
-    global STATIC_ATTRIBUTE_CTOR := GetStaticAttributeToken(mdi)
-    DumpTypes(mdi)
-    
-} else {
-    ; test_typename := "Windows.UI.Notifications.ToastNotification"
-    ; test_typename := "Windows.UI.Notifications.ToastNotificationManager"
-    ; test_typename := "Windows.ApplicationModel.DataTransfer.Clipboard"
-    ; test_typename := "Windows.Data.Html.HtmlUtilities"
-    ; test_typename := "Windows.Globalization.Language"
-    ; test_typename := "Windows.System.UserProfile.LockScreen"
-    ; test_typename := "Windows.Media.FaceAnalysis.FaceDetector"
-    ; test_typename := "Windows.Storage.KnownFolders"
-    ; test_typename := "Windows.ApplicationModel.Email.EmailMessage"
-    
-    ; test_typename := "Windows.Foundation.TypedEventHandler``2"
-    ; test_typename := "Windows.ApplicationModel.DataTransfer.IClipboardStatics"
-    ; test_typename := "Windows.Foundation.EventRegistrationToken"
-    ; test_typename := "Windows.Foundation.PropertyValue"
-    ; test_typename := "Windows.Foundation.Rect"
-    ; test_typename := "Windows.Foundation.IPropertyValueStatics"
-    test_typename := "Windows.Foundation.Collections.IVectorView``1"
-    
-    #DllLoad wintypes.dll
-    DllCall("wintypes.dll\RoGetMetaDataFile"
-        , "ptr", HStringFromString(test_typename)
-        , "ptr", 0
-        , "ptr*", hwinmd_file := HString()
-        , "ptr*", mdi := ComValue(13, 0)
-        , "uint*", &tdtoken:=0
-        , "hresult")
-    
-    ; D MetaDataModule(mdi).Name
-    ; D String(hwinmd_file)
-    
-    global STATIC_ATTRIBUTE_CTOR := GetStaticAttributeToken(mdi)
-    ; ComCall(14, mdi, "uint", 0x1000666, "uint*", &scope:=0, "ptr", 0, "uint", 0, "ptr", 0)
-    ; D Format("{:x}", scope)
-    ; D GetAssemblyRefName(mdi, scope)
-    
-    ; DumpTypeInfo(mdi, tdtoken)
-    
-    ; DumpStaticAttribute(mdi, tdtoken)
-    
-    ; EnumMethods(mdi, tdtoken)
-    
-    ; EnumInterfaceImpls(mdi, tdtoken)
-    
-    ; D '>=================='
-    
-    ; LockScreen := WinRT._GetClass("Windows.System.UserProfile.LockScreen")
+do_experiments
+do_experiments() {
+    ; LockScreen := WinRT("Windows.System.UserProfile.LockScreen")
     ; D "! Lock screen image: " String(LockScreen.OriginalImageFile)
     ; stream := LockScreen.GetImageStream()
     ; D stream.Size " bytes " stream.CanRead " " stream.CanWrite
     
-    ; KnownFolders := WinRT._GetClass("Windows.Storage.KnownFolders")
+    ; KnownFolders := WinRT("Windows.Storage.KnownFolders")
     ; MusicLib := KnownFolders.MusicLibrary
     ; D "! " MusicLib.DisplayName " " MusicLib.DisplayType
     
-    ; Clipboard := WinRT._GetClass("Windows.ApplicationModel.DataTransfer.Clipboard")
-    ; D "! Clipboard history is " (Clipboard.IsHistoryEnabled() ? "" : "not ") "enabled"
-    
-    ; HtmlUtilities := WinRT._GetClass("Windows.Data.Html.HtmlUtilities")
+    ; HtmlUtilities := WinRT("Windows.Data.Html.HtmlUtilities")
     ; D HtmlUtilities.ConvertToText("! <b>Hello</b>, <i>world</i>!")
     
-    ; D cw.get_IsSupported()
-    
-    ; appId := "{6D809377-6AF0-444b-8957-A3773F02200E}\AutoHotkey\v2-alpha\AutoHotkey64.exe"
+    ale := Windows.Storage.AccessCache.AccessListEntry()
+    ale.token := "hello"
+    ale.metadata := "world"
+    D ale.token ", " ale.metadata "!"
+}
+
+; test_clipboard_async_enums
+test_clipboard_async_enums() {
+    Clipboard := WinRT("Windows.ApplicationModel.DataTransfer.Clipboard")
+    D "! Clipboard history is " (Clipboard.IsHistoryEnabled() ? "" : "not ") "enabled"
+    results := WaitSync(Clipboard.GetHistoryItemsAsync())
+    if results.Status.s = "Success" {
+        items := results.Items
+        Loop Min(items.Size, 5) {
+            item := items.GetAt(A_Index-1)
+            dpv := item.Content
+            if dpv.Contains("Text") {
+                D A_index ": " WaitSync(dpv.GetTextAsync())
+            }
+        }
+    }
+    else
+        MsgBox results.Status.s
+}
+
+; test_storagefile
+test_storagefile() {
+    StorageFile := Windows.Storage.StorageFile
+    AS_Completed := Windows.Foundation.AsyncStatus.Completed
+    async := StorageFile.GetFileFromPathAsync("C:\Data\Pictures\anime\kokkoku\Kokkoku 2.png")
+    Loop
+        sleep 10
+    until async.status = AS_Completed
+    sfile := async.GetResults()
+    D sfile.DisplayType
+    D "100-nano`t" time := sfile.DateCreated.UniversalTime
+    D "YYYYMMDD`t" ytime := DateAdd("16010101", time/10000000 + 36000, "S")
+    D "`t`t" FormatTime(ytime)
+    D "FileGetTime`t" FileGetTime(sfile.Path, "C")
+    D "Attributes`t" String(sfile.Attributes)
+    ; D async.ErrorCode
+}
+
+test_notifications
+test_notifications() {
+    appId := "{6D809377-6AF0-444b-8957-A3773F02200E}\AutoHotkey\v2-alpha\AutoHotkey64.exe"
     ; appId := "{6D809377-6AF0-444b-8957-A3773F02200E}\AutoHotkey\AutoHotkey.exe"
-    TNM := WinRT._GetClass("Windows.UI.Notifications.ToastNotificationManager")
-    ; TH := TNM.History
-    ; TH.Clear appId
+    TNM := WinRT("Windows.UI.Notifications.ToastNotificationManager")
+    TNM.History.Clear appId
     toastXml := TNM.getTemplateContent(1)
     textEls := toastXml.getElementsByTagName("text")
-    D type(textEls.Item(0))
-    D type(textEls.GetAt(0))
-    ; textEls.Item(0).InnerText := "Hello, world!"
-    ; toastXml.getElementsByTagName("image").Item(0)
-            ; .setAttribute("src", "C:\Data\Scripts\Drafts\ActiveScript\sample.png")
-    ; toastNotifier := TNM.createToastNotifier(appId)
-    ; notification := WinRT._GetClass("Windows.UI.Notifications.ToastNotification")(toastXml)
-    ; toastNotifier.show(notification)
-    
-    WinRT._GetClass("Windows.Data.Xml.Dom.XmlNodeList")
-}
+    textEls.GetAt(0).InnerText := "Hello, world!"
+    toastXml.getElementsByTagName("image").Item(0)
+            .setAttribute("src", "C:\Data\Scripts\Drafts\ActiveScript\sample.png")
+    ; toastXml := WinRT("Windows.Data.Xml.Dom.XmlDocument")()
+    ; toastXml.LoadXml("
+    ; (
+    ;     <toast activationType="protocol" launch="https://google.com">
+    ;       <visual>
+    ;         <binding template="ToastGeneric">
+    ;           <text>Restaurant suggestion...</text>
+    ;           <text>We noticed that you are near Wasaki. Thomas left a 5 star rating after his last visit, do you want to try it?</text>
+    ;         </binding>
+    ;       </visual>
+    ;       <actions>
+    ;         <action activationType="protocol" content="Show calculator" arguments="ms-calculator:" />
+    ;       </actions>
+    ;     </toast>
+    ; )")
+    toastNotifier := TNM.createToastNotifier(appId)
+    notification := WinRT("Windows.UI.Notifications.ToastNotification")(toastXml)
+    toastNotifier.show(notification)
 }
 
-GetStaticAttributeToken(mdi) {
-    mdai := ComObjQuery(mdi, IID_IMetaDataAssemblyImport)
-    henum := 0
-    ; EnumAssemblyRefs
-    try while ComCall(8, mdai, "uint*", &henum, "uint*", &asm:=1, "uint", 1, "ptr", 0) = 0 {
-        if GetAssemblyRefName(mdi, asm) = "Windows.Foundation"
-            break
+; test_rtinterface
+test_rtinterface() {
+    testnames := [
+        ; "Windows.Foundation.IAsyncOperation``1<Windows.Storage.StorageFile>",
+        ; "Windows.Foundation.Collections.IVectorView``1<Windows.Data.Xml.Dom.IXmlNode>",
+        ; "Windows.UI.Xaml.Controls.TextBox",
+        "Windows.Foundation.HResult",
+        "Windows.Foundation.EventRegistrationToken",
+        "Windows.Foundation.AsyncStatus",
+        "Windows.Foundation.Rect",
+        "Windows.Foundation.Size",
+        "Windows.Foundation.TimeSpan",
+        "Windows.Foundation.DateTime",
+        ]
+    for testname in testnames {
+        dump(testname)
     }
-    finally
-        ComCall(15, mdai, "uint", henum, "int") ; CloseEnum
-    ; Currently we assume if there's no reference to Windows.Foundation,
-    ; the current scope of mdi ((mdModule)1) is Windows.Foundation.
-    ; if asm = 0
-        ; throw Error("Windows.Foundation assembly reference not found")
-    ; FindTypeRef
-    ComCall(55, mdi, "uint", asm, "wstr", "Windows.Foundation.Metadata.StaticAttribute"
-        , "uint*", &tr:=0)
-    
-    ; namebuf := Buffer(2*MAX_NAME_CCH)
-    henum := 0
-    ctor := 0
-    ; EnumMemberRefs
-    try while ComCall(23, mdi, "uint*", &henum, "uint", tr, "uint*", &mr:=0, "uint", 1, "ptr", 0) = 0 {
-        ; GetMemberRefProps
-        ComCall(31, mdi, "uint", mr, "uint*", &ttype:=0
-            ; , "ptr", namebuf, "uint", namebuf.size//2, "uint*", &namelen:=0
-            , "ptr", 0, "uint", 0, "ptr", 0
-            , "ptr", 0, "ptr", 0)
-        if ctor ; This is valid, but probably won't happen in Windows.*.winmd and isn't handled by this script.
-            throw Error("Multiple StaticAttribute constructors are referenced")
-        ctor := mr
+    dump(tn) {
+        t := WinRT.GetType(tn)
+        switch t.FundamentalType.Name {
+            case "Object": dumpc(t)
+            case "Interface": dumpi(t)
+            case "ValueType", "Enum": dumpv(t)
+            default:
+                D '{} is a {}', String(t), String(t.FundamentalType)
+        }
     }
-    finally
-        ComCall(3, mdi, "ptr", henum, "int") ; CloseEnum
-    return ctor
+    dumpv(t) {
+        d_scope(&s, t.Name)
+        ; dumpc(t)
+        for f in t.Fields() {
+            d_ f
+            D String(f.type)
+        }
+    }
+    dumpc(ht) {
+        D '+' ht.Name
+        if ht.HasIActivationFactory
+            D "supports direct activation"
+        for t in ht.Factories() {
+            D "factory " String(t)
+        }
+        for t in ht.Composers() {
+            D "composer " String(t)
+        }
+        for t in ht.Statics() {
+            D "static " String(t)
+        }
+        dumpi(ht)
+        if (b := ht.BaseType) is RtTypeInfo {
+            D 'extends ...'
+            dumpc(b)
+        }
+    }
+    dumpi(ht, indent:="") {
+        for t in ht.Implements() {
+            D indent "requires " String(t)
+            dumpi(t, indent "  ")
+        }
+    }
 }
 
-DumpTypeRef(mdi, r) {
-    name := GetTypeRefProps(mdi, r, &scope)
-    D Format("{:x} {}", r, name)
-    if (scope >> 24)
-        D Format("  in {:x} {}", scope, GetModuleRefProps(mdi, scope))
+; test_structs
+test_structs() {
+    ; Rect := Windows.Foundation.Rect
+    r := Windows.Foundation.Rect()
+    MouseGetPos(&x, &y)
+    r.X := x, r.Y := y
+    r.Width := 200, r.Height := r.Width*.75
+    ; @Debug-Output => {r.X} {r.Y} {r.Width} {r.Height}
 }
 
-GetModuleRefProps(mdi, mr) {
-    namebuf := Buffer(2*MAX_NAME_CCH)
-    ComCall(42, mdi, "uint", mr
-        , "ptr", namebuf, "uint", namebuf.size//2, "uint*", &namelen:=0)
-    return StrGet(namebuf, namelen, "UTF-16")
+; test_namespaces
+test_namespaces() {
+    dumpn(n, indent:="") {
+        for name, n2 in n {
+            ; D indent name " (" n2._name ")"
+            D indent n2._name
+            dumpn(n2, indent "  ")
+        }
+    }
+    dumpn(Windows)
+    ; dumpn(Windows.UI)
+    ; dumpn(Windows.ui.xaml)
 }
 
-GetTypeRefProps(mdi, r, &scope:=unset) {
-    namebuf := Buffer(2*MAX_NAME_CCH)
-    ComCall(14, mdi, "uint", r, "uint*", &scope:=0
-        , "ptr", namebuf, "uint", namebuf.size//2, "uint*", &namelen:=0)
-    return StrGet(namebuf, namelen, "UTF-16")
-}
-
-EnumInterfaceImpls(mdi, td) {
-    items := Buffer(4*32, 0)
-    namebuf := Buffer(2*MAX_NAME_CCH)
-    henum := 0
-    while ComCall(7, mdi, "ptr*", &henum, "uint", td
-        , "ptr", items, "uint", items.size//4, "uint*", &itemcount:=0) = 0 {
-        Loop itemcount {
-            item := NumGet(items, (A_Index-1)*4, "uint")
-            ; GetInterfaceImplProps
-            ComCall(13, mdi, "uint", item, "uint*", &td:=0, "uint*", &ti:=0)
-            if (ti >> 24) = 0x1b {
-                ; GetTypeSpecFromToken
-                ComCall(44, mdi, "uint", ti, "ptr*", &psig:=0, "uint*", &nsig:=0)
-                impl_name := DecodeMethodSig(mdi, psig, nsig)
+scan_files_for_structs
+scan_files_for_structs() {
+    Loop Files A_WinDir "\System32\WinMetadata\*.winmd" {
+        ; IMetaDataDispenser::OpenScope
+        mdm := MetaDataModule.Open(A_LoopFilePath)
+        ; EnumTypeDefs
+        for td in mdm.EnumTypeDefs() {
+            t := RtTypeInfo(mdm, td)
+            if t.FundamentalType.Name != "ValueType"
+                continue
+            fields := [t.Fields()*]
+            if fields.Length = 0  ; Metadata-only struct.
+                continue
+            simple := true
+            for f in fields {
+                ; if !(f.type is RtMarshal.Info) || f.type.HasProp('I') || f.type.HasProp('O')
+                ; if !(f.type is RtMarshal.Info)
+                ;     simple := false
+                if f.type = RtMarshal.String
+                    simple := false
             }
+            if simple
+                continue
+            try
+                cls := t.Class
+            catch as e
+                D '{}: {}', type(e), e.message
             else
-                impl_name := GetNameFromToken(mdi, ti)
-            D Format("+{:x} {:x} {} : {:x} {}"
-                , item, td, GetNameFromToken(mdi, td), ti, impl_name)
-            if IsTypeRef(ti) {
-                ti := ResolveLocalTypeRef(mdi, ti)
+                D 'Struct size: ' cls.prototype.Size
+            ; dumps(t.name, fields)
+        }
+    }
+    dumps(name, fields) {
+        d_scope(&s, name)
+        for f in fields {
+            if f.type is RtMarshal.Info || f.type.FundamentalType.Name = "Enum"
+                D f.name ' : ' String(f.type)
+            else
+                dumps(f.name ' : ' f.type.name, f.type.Fields())
+        }
+    }
+}
+
+; scan_files_for_rettypes
+scan_files_for_rettypes() {
+    Loop Files A_WinDir "\System32\WinMetadata\*.winmd" {
+        ; IMetaDataDispenser::OpenScope
+        mdm := MetaDataModule.Open(A_LoopFilePath)
+        ; EnumTypeDefs
+        for td in mdm.EnumTypeDefs() {
+            dumpt(RtTypeInfo(mdm, td))
+        }
+    }
+    dumpt(t) {
+        local s
+        for m in t.Methods() {
+            try {
+                ra := t.MethodArgTypes(m.sig)
+                if ra[1] is RtTypeInfo && ra[1].FundamentalType.Name = "ValueType"
+                    && ra[1].Name != "Windows.Foundation.EventRegistrationToken" {
+                    IsSet(s) || d_scope(&s, t.Name)
+                    d m.name ' -> ' ra[1].Name
+                }
             }
-            if (ti >> 24) = 2 { ; mdtTypeDef
-                DumpTypeInfo(mdi, ti)
-                EnumMethods(mdi, ti)
+            catch OSError as e {
+                if e.number != 0x80073D54
+                    throw
+                ; IsSet(s) || d_scope(&s, t.Name)
+                ; d m.name ' -- unsupported ' e.extra
             }
         }
     }
-    ComCall(3, mdi, "ptr", henum, "int") ; CloseEnum
 }
 
-DumpStaticAttribute(mdi, td) {
-    namebuf := Buffer(2*MAX_NAME_CCH)
-    henum := 0
-    ; EnumCustomAttributes
-    while ComCall(53, mdi, "uint*", &henum, "uint", td, "uint", STATIC_ATTRIBUTE_CTOR
-        , "uint*", &attr:=0, "uint", 1, "ptr", 0) = 0 {
-        ; GetCustomAttributeProps
-        ComCall(54, mdi, "uint", attr
-            , "ptr", 0, "uint*", &tctor:=0
-            , "ptr*", &pdata:=0, "uint*", &ndata:=0)
-        D '!' StrGet(pdata + 3, 'utf-8')
-    }
-    /*
-    ; EnumCustomAttributes
-    while ComCall(53, mdi, "uint*", &henum, "uint", td, "uint", 0
-        , "uint*", &attr:=0, "uint", 1, "ptr", 0) = 0 {
-        ; GetCustomAttributeProps
-        ComCall(54, mdi, "uint", attr
-            , "ptr", 0, "uint*", &tctor:=0
-            , "ptr*", &pdata:=0, "uint*", &ndata:=0)
-        if (tctor >> 24) = 0x0a {
-            ; GetMemberRefProps
-            ComCall(31, mdi, "uint", tctor, "uint*", &ttype:=0
-                , "ptr", namebuf, "uint", namebuf.size//2, "uint*", &namelen:=0
-                , "ptr", 0, "ptr", 0)
-            D Format("  {:x} {:x} {}", tctor, ttype, GetNameFromToken(mdi, ttype))
-        }
-        ; D '! ' StrGet(pdata + 3, 'utf-8')
-    }
-    */
-    ComCall(3, mdi, "ptr", henum, "int") ; CloseEnum
-}
 
-IsTypeRef(r) => (r >> 24) = 1
-ResolveLocalTypeRef(mdi, r) {
-    ; Resolve type ref
-    name := GetTypeRefProps(mdi, r, &scope)
-    if scope != 1 ; not local module?
-        throw Error(Format("Unsupported scope 0x{:x} for {:x} type {}", scope, r, name))
-    return FindTypeDefByName(mdi, name)
-}
-
-FindTypeDefByName(mdi, name) {
-    ComCall(9, mdi, "wstr", name, "uint", 0, "uint*", &r:=0)
-    return r
-}
-
-EnumMethods(mdi, token) {
-    items := Buffer(4*32, 0)
-    namebuf := Buffer(2*MAX_NAME_CCH)
-    henum := 0
-    while ComCall(16, mdi, "ptr*", &henum, "uint", token
-        , "ptr", items, "uint", items.size//4, "uint*", &itemcount:=0) = 0 {
-        Loop itemcount {
-            method := NumGet(items, (A_Index-1)*4, "uint")
-            ; GetMethodProps
-            ComCall(30, mdi, "uint", method, "uint*", &tclass:=0
-                , "ptr", namebuf, "uint", namebuf.size//2, "uint*", &namelen:=0
-                , "uint*", &attr:=0
-                , "ptr*", &psig:=0, "uint*", &siglen:=0 ; signature blob
-                , "ptr", 0 ; RVA (not relevant for WinRT?)
-                , "ptr", 0) ; Method impl flags (not useful for us)
-            cconv := NumGet(psig++, "uchar")
-            argc := NumGet(psig++, "uchar")
-            sig := DecodeMethodSig(mdi, psig, siglen - 2)
-            D Format("{} - {}`n  {:02x} {:02x} {}"
-                , StrGet(namebuf, namelen, "UTF-16")
-                , DecodeMethodAttr(attr)
-                , cconv, argc, sig)
-        }
-    }
-    ComCall(3, mdi, "ptr", henum, "int") ; CloseEnum
-}
-
-DecodeMethodSigType(mdi, &p) {
-    static primitives := Map(
-        0x01, "void",
-        0x02, "bool", ; Boolean
-        0x03, "wchar", ; Char16
-        0x04, "char",
-        0x05, "uchar",
-        0x06, "short",
-        0x07, "ushort",
-        0x08, "int",
-        0x09, "uint",
-        0x0a, "int64",
-        0x0b, "uint64",
-        0x0c, "float",
-        0x0d, "double",
-        0x0e, "string",
-        0x18, "ptr",
-        0x19, "uptr",
-        0x1c, "Object",
-    )
-    b := NumGet(p++, "uchar")
-    if "" != (t := primitives.get(b, ""))
-        return t
-    switch b {
-        case 0x0f: ; ptr
-            return DecodeMethodSigType(mdi, &p) '*'
-        case 0x10: ; ref
-            return DecodeMethodSigType(mdi, &p) '&'
-        case 0x1D: ; array
-            return DecodeMethodSigType(mdi, &p) '[]'
-        case 0x11, 0x12: ; value type, class type
-            return RegExReplace(GetTypeRefProps(mdi, CorSigUncompressToken(&p), &scope)
-                , "^(Windows|System)\.(.*\.)?") (b=0x11 ? "^" : "")
-        case 0x13: ; generic type parameter
-            return 'T' (NumGet(p++, "uchar") + 1)
-        case 0x15: ; GENERICINST <generic type> <argCnt> <arg1> ... <argn>
-            t := RegExReplace(DecodeMethodSigType(mdi, &p), '``\d+$') '<'
-            Loop argc := NumGet(p++, "uchar")
-                t .= (A_Index>1 ? ',' : '') . DecodeMethodSigType(mdi, &p)
-            t .= '>'
-            return t
-        default:
-            return Format("{:02x}", b)
-    }
-}
-
-DecodeMethodSig(mdi, p, size) {
-    p2 := p + size
+DecodeMethodSig(mdi, p, size) { ;debug
     sig := ""
-    while p < p2 {
+    for t in _rt_DecodeSig(mdi, p, size) {
         (A_Index > 1) && sig .= " "
-        sig .= DecodeMethodSigType(mdi, &p)
+        sig .= String(t)
     }
-    if p > p2
-        sig .= " ERR"
-    return sig
-}
-
-DecodeMethodAttr(a) {
-    static accesswords := ['PrivateScope', 'Private', 'FamANDAssem', 'Assembly'
-        , 'Family', 'FamORAssem', 'Public']
-    flags := '' ; accesswords[(a & 7) + 1]
-    static flagmap := Map(
-        0x8, 'UnmanagedExport',
-        0x10, 'Static',
-        0x20, 'Final',
-        ; 0x40, 'Virtual',
-        ; 0x80, 'HideBySig',
-        0x100, 'NewSlot',
-        0x200, 'CheckAccessOnOverride',
-        0x400, 'Abstract',
-        0x800, 'SpecialName',
-        0x1000, 'RTSpecialName',
-        0x2000, 'PinvokeImpl',
-        0x4000, 'HasSecurity',
-        0x8000, 'RequireSecObject'
-    )
-    flag := 0x8
-    while flag < 0x8000 {
-        if f := a & flag
-            flagmap.has(f) ? flags .= ' ' flagmap[f] : ''
-            ; flags .= ' ' flagmap.get(f, Format("0x{:x}", f))
-        flag <<= 1
-    }
-    return LTrim(flags, ' ')
-}
-
-DumpTypeInfo(mdi, tdtoken) {
-    namebuf := Buffer(2*MAX_NAME_CCH)
-    ; GetTypeDefProps
-    ComCall(12, mdi, "uint", tdtoken
-        , "ptr", namebuf, "uint", namebuf.size//2, "uint*", &namelen:=0
-        , "uint*", &flags:=0, "uint*", &basetype:=0)
-    D Format("{:x} {:x} {}", tdtoken, flags, StrGet(namebuf, namelen, "UTF-16"))
-    if basetype && !(flags & 0x20) { ; tdInterface:=0x20 - WinRT interfaces always extend IInspectable, which doesn't exist in the metadata.
-        if IsTypeRef(basetype) {
-            ; D Format("{:x}", basetype)
-            name := GetTypeRefProps(mdi, basetype, &scope)
-            ; if SubStr(name, 1, 7) == "System." {
-                D "  extends " name
-                ; return
-            ; }
-        }
-        else {
-            D "  extends:"
-            DumpTypeInfo(mdi, basetype)
-        }
-    }
-}
-
-DumpTypes(mdi) {
-    ; EnumTypeDefs
-    typedefs := Buffer(4*32, 0)
-    namebuf := Buffer(2*MAX_NAME_CCH)
-    henum := 0
-    while ComCall(6, mdi, "ptr*", &henum, "ptr", typedefs, "uint", 32, "uint*", &tdcount:=0) = 0 {
-        Loop tdcount {
-            td := NumGet(typedefs, (A_Index-1)*4, "uint")
-            DumpTypeInfo(mdi, td)
-            DumpStaticAttribute(mdi, td)
-        }
-    }
-    ComCall(3, mdi, "ptr", henum, "int") ; CloseEnum
-}
-
-GetNameFromToken(mdi, token) {
-    try
-        ComCall(45, mdi, "uint", token, "ptr*", &pname:=0)
-    catch as e
-        return Format("noname(Err:{:x})", e.number)
-    return StrGet(pname, "UTF-8")
+    return RegExReplace(StrReplace(sig, " ", ", "), "^([^\s,]+)(?:, (.*))?", "($2) -> $1")
 }
 
 
-CorIsPrimitiveType(t) => t < ELEMENT_TYPE.PTR || t = ELEMENT_TYPE.I || t = ELEMENT_TYPE.U
-CorIsModifierElementType(t) => t = ELEMENT_TYPE.PTR || t = ELEMENT_TYPE.BYREF || (t & ELEMENT_TYPE.MODIFIER)
 CorSigUncompressedDataSize(p) => (
     (NumGet(p, "uchar") & 0x80) = 0x00 ? 1 :
     (NumGet(p, "uchar") & 0xC0) = 0x80 ? 2 : 4
@@ -442,39 +317,7 @@ CorSigUncompressToken(&p) {
 }
 
 
-GetAssemblyRefName(mdi, r) {
-    mdai := ComObjQuery(mdi, IID_IMetaDataAssemblyImport)
-    namebuf := Buffer(2*MAX_NAME_CCH)
-    ; GetAssemblyRefProps
-    ComCall(4, mdai , "uint", r , "ptr", 0 , "ptr", 0
-        , "ptr", namebuf, "uint", namebuf.size//2, "uint*", &namelen:=0
-        , "ptr", 0 , "ptr", 0 , "ptr", 0 , "ptr", 0)
-    return StrGet(namebuf, namelen, "UTF-16")
-}
 
-
-class HString {
-	__new(hstr := 0) => this.ptr := hstr
-	ToString() => WindowsGetString(this)
-	__delete() {
-        ; api-ms-win-core-winrt-string-l1-1-0.dll
-		DllCall("combase.dll\WindowsDeleteString"
-			, "ptr", this) ; this.ptr can be 0 (equivalent to "").
-	}
-}
-
-HStringFromString(str, len := unset) {
-    DllCall("combase.dll\WindowsCreateString"
-			, "ptr", StrPtr(str), "uint", IsSet(len) ? len : StrLen(str)
-            , "ptr*", &hstr := 0, "hresult")
-    return HString(hstr)
-}
-
-WindowsGetString(hstr, &len := 0) {
-	p := DllCall("combase.dll\WindowsGetStringRawBuffer"
-		, "ptr", hstr, "uint*", &len := 0, "ptr")
-	return StrGet(p, -len, "UTF-16")
-}
 
 
 class GUID extends Buffer {
@@ -499,78 +342,143 @@ class WinRT {
         this._cls.CaseSense := "off"
     }
     
-    ; static Call(p) => p is Integer ? _rt_WrapInspectable(p) : ...
+    static Call(p) => (
+        p is String ? this.GetType(p).Class :
+        p is Object ? _rt_WrapInspectable(p.ptr) :
+        _rt_WrapInspectable(p)
+    )
     
-    static _GetClass(classname) =>
-        this._cls.get(classname, 0) ||
-        this._cls[classname] := this._MakeClass(classname)
-    
-    static _MakeClass(classname) {
-        MetaDataModule.GetForTypeName(classname, &mdm, &td)
-        return mdm.CreateClassWrapper(td, classname)
+    static _CacheGetMetaData(typename, &td) {
+        #DllLoad wintypes.dll
+        DllCall("wintypes.dll\RoGetMetaDataFile"
+            , "ptr", HStringFromString(typename)
+            , "ptr", 0
+            , "ptr", 0
+            , "ptr*", m := MetaDataModule()
+            , "uint*", &td := 0
+            , "hresult")
+        static cache := Map()
+        ; Cache modules by filename to conserve memory and so cached property values
+        ; can be used by all namespaces within the module.
+        return cache.get(mn := m.Name, false) || cache[mn] := m
     }
     
-    ; Returns function (instancePtr => wrapper for instancePtr).
-    ; static _GetWrapFn(classname) =>
-        ; this._wrp.get(classname, 0) ||
-        ; this._wrp[classname] := this._MakeWrapFn(classname)
-    
-    static _GetWrapFn(classname, proto:=unset) {
-        MetaDataModule.GetForTypeName(classname, &mdm, &td)
-        if mdm.GetTypeDefFlags(td) & 0x20 { ; interface
-            return _rt_WrapInspectable
+    static _CacheGetTypeNS(name) {
+        if !(p := InStr(name, ".",, -1))
+            throw ValueError("Invalid typename", -1, name)
+        static cache := Map()
+        ; Cache module by namespace, since all types *directly* within a namespace
+        ; must be defined within the same file (but child namespaces can be defined
+        ; in a different file).
+        try {
+            if m := cache.get(ns := SubStr(name, 1, p-1), false) {
+                ; Module already loaded - find the TypeDef within it.
+                td := m.FindTypeDefByName(name)
+            }
+            else {
+                ; Since we haven't seen this namespace before, let the system work out
+                ; which module contains its metadata.
+                cache[ns] := m := this._CacheGetMetaData(name, &td)
+            }
         }
-        return WrapClass(p) => {
-            ptr: p,
-            base: IsSet(proto) ? proto : proto := WinRT._GetClass(classname).prototype
+        catch OSError as e {
+            if e.number = 0x80073D54 {
+                e.message := "(0x80073D54) Type not found."
+                e.extra := name
+            }
+            throw
+        }
+        return RtTypeInfo(m, td)
+    }
+    
+    static _CacheGetType(name) {
+        static cache := RtTypeInfo.cache
+        ; Cache typeinfo by full name.
+        return cache.get(name, false)
+            || cache[name] := this._CacheGetTypeNS(name)
+    }
+    
+    static GetType(name) {
+        if p := InStr(name, "<") {
+            baseType := this._CacheGetType(baseName := SubStr(name, 1, p-1))
+            typeArgs := []
+            while RegExMatch(name, "\G([^<>,]++(?:<(?:(?1)(?:,|(?=>)))++>)?)(?=[,>])", &m, ++p) {
+                typeArgs.Push(this.GetType(m.0))
+                p += m.Len
+            }
+            if p != StrLen(name) + 1
+                throw Error("Parse error or bad name.", -1, SubStr(name, p) || name)
+            return {
+                typeArgs: typeArgs,
+                GUID: _rt_GetParameterizedIID(baseName, typeArgs),
+                base: baseType
+            }
+        }
+        return this._CacheGetType(name)
+    }
+    
+    static GetTypeByToken(m, t, typeArgs:=false) {
+        scope := -1
+        switch (t >> 24) {
+        case 0x01: ; TypeRef (most common)
+            ; TODO: take advantage of GetTypeRefProps's scope parameter
+            return this.GetType(m.GetTypeRefProps(t))
+        case 0x02: ; TypeDef
+            MsgBox 'DEBUG: GetTypeByToken was called with a TypeDef token.`n`n' Error().Stack
+            ; TypeDefs usually aren't referenced directly, so just resolve it by
+            ; name to ensure caching works correctly.  Although GetType resolving
+            ; the TypeDef will be a bit redundant, it should perform the same as
+            ; if a TypeRef token was passed in.
+            return this.GetType(m.GetTypeDefProps(t))
+        case 0x1b: ; TypeSpec
+            ; GetTypeSpecFromToken
+            ComCall(44, m, "uint", t, "ptr*", &psig:=0, "uint*", &nsig:=0)
+            ; Signature: 0x15 0x12 <typeref> <argcount> <args>
+            nsig += psig++
+            return _rt_DecodeSigGenericInst(m, &psig, nsig, typeArgs)
+        default:
+            throw Error(Format("Cannot resolve token 0x{:08x} to type info.", t), -1)
         }
     }
 }
 
-_rt_WrapInspectable(p) {
+_rt_WrapInspectable(p, typeinfo:=false) {
+    if !p
+        return
     ; IInspectable::GetRuntimeClassName
-    ComCall(4, p, "ptr*", &hcls:=0)
+    hr := ComCall(4, p, "ptr*", &hcls:=0, "int")
+    if hr >= 0 {
+        typeinfo := WinRT.GetType(HStringRet(hcls))
+    }
+    else if !typeinfo || hr != -2147467263 { ; E_NOTIMPL
+        e := OSError(hr)
+        e.Message := "IInspectable::GetRuntimeClassName failed`n`t" e.Message
+        throw e
+    }
     return {
         ptr: p,
-        base: WinRT._GetClass(_rt_HStringRet(hcls)).prototype
+        base: typeinfo.Class.prototype
     }
 }
 
-AddMethodOverloadTo(obj, name, f, name_prefix:="") {
-    if obj.HasOwnProp(name) {
-        if (pd := obj.GetOwnPropDesc(name)).HasProp('Call')
-            prev := pd.Call
-    }
-    if IsSet(prev) {
-        if !((of := prev) is OverloadedFunc) {
-            obj.DefineProp(name, {Call: of := OverloadedFunc()})
-            of.Name := name_prefix . name
-            of.Add(prev)
-        }
-        of.Add(f)
-    }
-    else
-        obj.DefineProp(name, {Call: f})
+
+_rt_memoize(this, propname, f := unset) {
+    value := IsSet(f) ? f(this) : this._init_%propname%()
+    this.DefineProp propname, {value: value}
+    return value
 }
 
-class OverloadedFunc {
-    m := Map()
-    Add(f) {
-        n := f.MinParams
-        Loop (f.MaxParams - n) + 1
-            if this.m.has(n)
-                throw Error("Ambiguous function overloads", -1)
-            else
-                this.m[n++] := f
-    }
-    Call(p*) {
-        if (f := this.m.get(p.Length, 0))
-            return f(p*)
-        else
-            throw Error(Format('Overloaded function "{}" does not accept {} parameters.'
-                , this.Name, p.Length), -1)
-    }
-    static __new() {
-        this.prototype.Name := ""
-    }
+d_start(m) {
+    ; @Debug-Output:startCollapsed => {m}
+}
+d_(m) {
+    ; @Debug-Output => {m}
+}
+d_end() {
+    ; @Debug-Output:end
+}
+d_scope(&s, m) {
+    global A_DebuggerName
+    static ender := {__delete: this => d_end()}
+    return IsSet(A_DebuggerName) && (s := {base: ender}, d_start(m))
 }

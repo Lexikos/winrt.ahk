@@ -1,33 +1,37 @@
 
 class MetaDataModule {
-    __new(mdi) {
-        if mdi is Integer
-            this.ptr := mdi
-        else if ComObjType(mdi) = 13
-            ObjAddRef(this.ptr := ComObjValue(mdi))
-        else
-            throw TypeError("Parameter #1 type invalid", -1, type(mdi))
-    }
+    ptr := 0
     __delete() {
-        ObjRelease(this.ptr)
+        (p := this.ptr) && ObjRelease(p)
     }
-    
     StaticAttr => _rt_CacheAttributeCtors(this, this, 'StaticAttr')
     FactoryAttr => _rt_CacheAttributeCtors(this, this, 'FactoryAttr')
     ActivatableAttr => _rt_CacheAttributeCtors(this, this, 'ActivatableAttr')
+    ComposableAttr => _rt_CacheAttributeCtors(this, this, 'ComposableAttr')
     
-    AddFactoriesToWrapper(w, td) {
-        for attr in this.EnumCustomAttributes(td, this.ActivatableAttr) {
+    ObjectTypeRef => _rt_memoize(this, 'ObjectTypeRef')
+    _init_ObjectTypeRef() {
+        mdai := ComObjQuery(this, "{EE62470B-E94B-424e-9B7C-2F00C9249F93}") ; IID_IMetaDataAssemblyImport
+        asm := _rt_FindAssemblyRef(mdai, "mscorlib") || 1
+        ; FindTypeRef
+        if ComCall(55, this, "uint", asm, "wstr", "System.Object", "uint*", &tr:=0, "int") != 0 {
+            D '- System.Object not found'
+            return -1
+        }
+        return tr
+    }
+    
+    AddFactoriesToWrapper(w, t) {
+        if t.HasIActivationFactory {
             this.AddIActivationFactoryToWrapper(w)
         }
-        for attr in this.EnumCustomAttributes(td, this.FactoryAttr) {
-            ; GetCustomAttributeProps
-            ComCall(54, this, "uint", attr
-                , "ptr", 0, "ptr", 0, "ptr*", &pdata:=0, "uint*", &ndata:=0)
-            iface_name := StrGet(pdata + 3, "utf-8")
-            ; FindTypeDefByName
-            ComCall(9, this, "wstr", iface_name, "uint", 0, "uint*", &ti:=0)
-            this.AddInterfaceToWrapper(w, ti,, "Call")
+        for f in t.Factories() {
+            this.AddInterfaceToWrapper(w, f, false, "Call")
+        }
+        for f in t.Composers() {
+            this.AddInterfaceToWrapper(w, f, false, "Call")
+            if w.HasOwnProp("Call")
+                AddMethodOverloadTo(w, "Call", w => w(0, 0), w.prototype.__class ".")
         }
     }
     
@@ -37,106 +41,83 @@ class MetaDataModule {
                 , "ptr*", inst := {base: cls.prototype})
             return inst
         }
-        D '! adding IActivationFactory to ' w.prototype.__class
         AddMethodOverloadTo(w, "Call", ActivateInstance, w.prototype.__class ".")
     }
     
-    CreateClassWrapper(td, classname) {
-        w := Class()
-        w.base := RtObject
-        w.prototype := RtObject()
-        w.prototype.__class := classname ;:= this.GetTypeDefProps(td, &flags)
-        ; if flags & 0x20 {
-            ; D '+ interface ' classname
-            ; this.AddInterfaceToWrapper(w.prototype, td, true)
-            ; return w
-        ; }
-        D '+ class ' classname
-        ; static oiid := GUID("{00000035-0000-0000-C000-000000000046}") ; IActivationFactory
-        static oiid := GUID("{AF86E2E0-B12D-4c6a-9C5A-D7AA65101E90}") ; IInspectable
-        hr := DllCall("combase.dll\RoGetActivationFactory"
-            , "ptr", HStringFromString(classname)
-            , "ptr", oiid
-            , "ptr*", w, "int")
-        if hr < 0
-            D '- no class factory for ' classname
-        this.AddFactoriesToWrapper(w, td)
-        ; For each static interface:
-        for attr in this.EnumCustomAttributes(td, this.StaticAttr) {
-            ; GetCustomAttributeProps
-            ComCall(54, this, "uint", attr
-                , "ptr", 0, "uint*", &tctor:=0, "ptr*", &pdata:=0, "uint*", 0)
-            iface_name := StrGet(pdata + 3, "utf-8")
-            ; FindTypeDefByName
-            ComCall(9, this, "wstr", iface_name, "uint", 0, "uint*", &ti:=0)
-            this.AddInterfaceToWrapper(w, ti)
-        }
-        ; For each instance interface:
-        for impl in this.EnumInterfaceImpls(td) {
-            ; GetCustomAttributeByName
-            isdefault := ComCall(60, this, "uint", impl, "wstr", "Windows.Foundation.Metadata.GuidAttribute", "ptr", 0, "ptr", 0) = 0
-            ; GetInterfaceImplProps
-            ComCall(13, this, "uint", impl, "ptr", 0, "uint*", &ti:=0)
-            if IsTypeRef(ti)
-                ti := ResolveLocalTypeRef(this, ti)
-            this.AddInterfaceToWrapper(w.prototype, ti, isdefault)
+    CreateInterfaceWrapper(t) {
+        w := _rt_CreateClass(t.Name, RtObject)
+        this.AddInterfaceToWrapper(w.prototype, t, true)
+        addreq(w.prototype, t)
+        addreq(w, t) {
+            for impl in t.Implements() {
+                impl.m.AddInterfaceToWrapper(w, impl, false)
+                addreq(w, impl)
+            }
         }
         return w
     }
     
-    AddInterfaceToWrapper(w, td, isdefault:=false, nameoverride:=unset, genericTypes:=false) {
-        classname := w.HasOwnProp('prototype') ? w.prototype.__class : w.__class ;debug
-        if (td >> 24) = 0x1b { ; mdtTypeSpec
-            ; GetTypeSpecFromToken
-            ComCall(44, this, "uint", td, "ptr*", &psig:=0, "uint*", &nsig:=0)
-            ; 0x15 0x12 <typeref> <argcount> <args>
-            if NumGet(psig, 0, "ushort") != 0x1215 {
-                D "- unsupported typespec {:x} in class {}", td, classname
-                return
-            }
-            p := psig + 2
-            name := GetTypeRefProps(this, CorSigUncompressToken(&p))
-            argc := NumGet(p++, "uchar")
-            genericTypes := DecodeSigTypes(this, p, nsig - (p - psig), argc)
-            MetaDataModule.GetForTypeName(name, &mdm, &td)
-            ; return mdm.AddInterfaceToWrapper(w, td,,, genericTypes)
-            this := mdm
-            pguid := _rt_GetParameterizedIID([name, ...])
+    CreateClassWrapper(t) {
+        if (baseclass := t.BaseType).HasProp('Class')
+            baseclass := baseclass.Class
+        else
+            throw Error("This type is not a class",, String(baseclass))
+        w := _rt_CreateClass(classname := t.Name, baseclass)
+        ; Add any constructors:
+        this.AddFactoriesToWrapper(w, t)
+        ; Add static interfaces to the class:
+        for ti in t.Statics() {
+            this.AddInterfaceToWrapper(w, ti)
         }
-        else {
-            ; GetCustomAttributeByName
-            if ComCall(60, this, "uint", td, "wstr", "Windows.Foundation.Metadata.GuidAttribute"
-                , "ptr*", &pguid:=0, "uint*", &nguid:=0) != 0 {
-                D "- interface {:x} can't be added; no GUID", td
-                return
-            }
-            ; Attribute is serialized with leading 16-bit version (1) and trailing 16-bit number of named args (0).
-            if nguid != 20
-                throw Error("Unexpected GuidAttribute data; length = " nguid)
-            pguid += 2
+        ; Need a factory?
+        if ObjOwnPropCount(w) > 1 {
+            static oiid := GUID("{AF86E2E0-B12D-4c6a-9C5A-D7AA65101E90}") ; IInspectable
+            hr := DllCall("combase.dll\RoGetActivationFactory"
+                , "ptr", HStringFromString(classname)
+                , "ptr", oiid
+                , "ptr*", w, "hresult")
         }
-        if isdefault {
-            w.__DefaultIID := pguid
-            w.__DefaultIName := this.GetTypeDefProps(td)
+        wrapped := Map()
+        addRequiredInterfaces(wp, t, isclass) {
+            for ti, impl in t.Implements() {
+                ; GetCustomAttributeByName
+                isdefault := isclass && ComCall(60, this, "uint", impl
+                    , "wstr", "Windows.Foundation.Metadata.DefaultAttribute"
+                    , "ptr", 0, "ptr", 0) = 0
+                if isdefault
+                    t.DefineProp 'DefaultInterface', {value: ti}
+                if wrapped.has(ti_name := ti.Name)
+                    continue
+                wrapped[ti_name] := true
+                ti.m.AddInterfaceToWrapper(wp, ti, isdefault)
+                ; Interfaces "required" by ti are also implemented by the class
+                ; even if it doesn't "require" them directly (sometimes it does).
+                addRequiredInterfaces(wp, ti, false)
+            }
+        }
+        ; Add instance interfaces:
+        addRequiredInterfaces(w.prototype, t, true)
+        return w
+    }
+    
+    AddInterfaceToWrapper(w, t, isdefault:=false, nameoverride:=false) {
+        pguid := t.GUID
+        if !pguid {
+            D "- interface {:x} can't be added; no GUID", t.Name
+            return
         }
         namebuf := Buffer(2*MAX_NAME_CCH)
         DllCall("ole32\StringFromGUID2", "ptr", pguid, "ptr", namebuf, "int", MAX_NAME_CCH)
-        D iid := StrGet(namebuf)
-        for method in this.EnumMethods(td) {
-            ; GetMethodProps
-            ComCall(30, this, "uint", method, "uint*", &tclass:=0
-                , "ptr", namebuf, "uint", namebuf.size//2, "uint*", &namelen:=0
-                , "uint*", &attr:=0
-                , "ptr*", &psig:=0, "uint*", &nsig:=0 ; signature blob
-                , "ptr", 0, "ptr", 0)
-            if IsSet(nameoverride)
-                name := nameoverride
-            else
-                D name := StrGet(namebuf, namelen, "UTF-16")            
-            D "  " DecodeMethodSig(this, psig+2, nsig-2)
-            types := DecodeSig(this, psig, nsig, genericTypes)
-            wrapper := MethodWrapper(5 + A_Index, iid, types, classname '.' name)
-            if attr & 0x400 { ; tdSpecialName
+        iid := StrGet(namebuf)
+        d_scope(&dbg, iid ' ' t.Name)
+        name_prefix := w.HasOwnProp('prototype') ? w.prototype.__class ".Prototype." : w.__class "."
+        for method in t.Methods() {
+            name := nameoverride ? nameoverride : method.name
+            D name DecodeMethodSig(this, method.sig.ptr, method.sig.size)
+            ; TODO: signature abstraction?
+            types := _rt_DecodeSig(this, method.sig.ptr, method.sig.size, t.typeArgs)
+            wrapper := MethodWrapper(5 + A_Index, iid, types, name_prefix name)
+            if method.flags & 0x400 { ; tdSpecialName
                 switch SubStr(name, 1, 4) {
                 case "get_":
                     w.DefineProp(SubStr(name, 5), {Get: wrapper})
@@ -146,56 +127,75 @@ class MetaDataModule {
                     continue
                 }
             }
-            AddMethodOverloadTo(w, name, wrapper, classname ".")
+            AddMethodOverloadTo(w, name, wrapper, name_prefix)
         }
+    }
+    
+    FindTypeDefByName(name) {
+        ComCall(9, this, "wstr", name, "uint", 0, "uint*", &r:=0)
+        return r
     }
     
     GetTypeDefProps(td, &flags:=0, &basetd:=0) {
         namebuf := Buffer(2*MAX_NAME_CCH)
         ; GetTypeDefProps
         ComCall(12, this, "uint", td
-            , "ptr", namebuf, "uint", namebuf.size//2, "uint*", &namelen:=0
+            , "ptr", namebuf, "uint", namebuf.Size//2, "uint*", &namelen:=0
             , "uint*", &flags:=0, "uint*", &basetd:=0)
         ; Testing shows namelen includes a null terminator, but the docs aren't
         ; clear, so rely on StrGet's positive-length behaviour to truncate.
         return StrGet(namebuf, namelen, "UTF-16")
     }
     
-    GetTypeDefFlags(td) {
-        ; GetTypeDefProps
-        ComCall(12, this, "uint", td
-            , "ptr", 0, "uint", 0, "ptr", 0
-            , "uint*", &flags:=0, "ptr", 0)
-        return flags
+    GetTypeRefProps(r, &scope:=unset) {
+        namebuf := Buffer(2*MAX_NAME_CCH)
+        ComCall(14, this, "uint", r, "uint*", &scope:=0
+            , "ptr", namebuf, "uint", namebuf.size//2, "uint*", &namelen:=0)
+        return StrGet(namebuf, namelen, "UTF-16")
+    }
+    
+    GetGuidPtr(td) {
+        ; GetCustomAttributeByName
+        if ComCall(60, this, "uint", td
+            , "wstr", "Windows.Foundation.Metadata.GuidAttribute"
+            , "ptr*", &pguid:=0, "uint*", &nguid:=0) != 0
+            return 0
+        ; Attribute is serialized with leading 16-bit version (1) and trailing 16-bit number of named args (0).
+        if nguid != 20
+            throw Error("Unexpected GuidAttribute data length: " nguid)
+        return pguid + 2
     }
     
     EnumMethods(td)                 => _rt_Enumerator(18, this, "uint", td)
     EnumCustomAttributes(td, tctor) => _rt_Enumerator(53, this, "uint", td, "uint", tctor)
+    EnumTypeDefs()                  => _rt_Enumerator(6, this)
     EnumInterfaceImpls(td)          => _rt_Enumerator(7, this, "uint", td)
     
     Name {
         get {
             namebuf := Buffer(2*MAX_NAME_CCH)
             ; GetScopeProps
-            ComCall(10, this, "ptr", namebuf, "uint", namebuf.size//2, "uint*", &namelen:=0, "ptr", 0)
+            ComCall(10, this, "ptr", namebuf, "uint", namebuf.Size//2, "uint*", &namelen:=0, "ptr", 0)
             return StrGet(namebuf, namelen, "UTF-16")
         }
     }
     
-    static GetForTypeName(typename, &mdm, &td) {
-        #DllLoad wintypes.dll
-        DllCall("wintypes.dll\RoGetMetaDataFile"
-            , "ptr", HStringFromString(typename)
-            , "ptr", 0
-            , "ptr", 0
-            , "ptr*", &mdi := 0
-            , "uint*", &td := 0
-            , "hresult")
-        mdm := this(mdi)
+    static Open(path) {
+        #DllLoad rometadata.dll
+        DllCall("rometadata.dll\MetaDataGetDispenser"
+            , "ptr", CLSID_CorMetaDataDispenser, "ptr", IID_IMetaDataDispenser
+            , "ptr*", mdd := ComValue(13, 0), "hresult")
+        ; IMetaDataDispenser::OpenScope
+        ComCall(4, mdd, "wstr", path, "uint", 0
+            , "ptr", IID_IMetaDataImport
+            , "ptr*", mdm := MetaDataModule())
+        return mdm
     }
 }
 
-_rt_Enumerator(methodidx, this, args*) {
+_rt_Enumerator(args*) => _rt_Enumerator_f(false, args*)
+
+_rt_Enumerator_f(f, methodidx, this, args*) {
     henum := index := count := 0
     ; Getting the items in batches improves performance, with diminishing returns.
     buf := Buffer(4 * batch_size:=32)
@@ -211,6 +211,7 @@ _rt_Enumerator(methodidx, this, args*) {
                 return false
         }
         item := NumGet(buf, (index++) * 4, "uint")
+        (f) && f(&item)
         return true
     }
     return next
@@ -222,7 +223,7 @@ _rt_FindAssemblyRef(mdai, target_name) {
     for asm in _rt_Enumerator(8, mdai) {
         ; GetAssemblyRefProps
         ComCall(4, mdai , "uint", asm, "ptr", 0, "ptr", 0
-            , "ptr", namebuf, "uint", namebuf.size//2, "uint*", &namelen:=0
+            , "ptr", namebuf, "uint", namebuf.Size//2, "uint*", &namelen:=0
             , "ptr", 0, "ptr", 0, "ptr", 0, "ptr", 0)
         if StrGet(namebuf, namelen, "UTF-16") = target_name
             return asm
@@ -236,183 +237,156 @@ _rt_CacheAttributeCtors(mdi, o, retprop) {
     ; the current scope of mdi (mdModule(1)) is Windows.Foundation.
     asm := _rt_FindAssemblyRef(mdai, "Windows.Foundation") || 1
     
-    DefOnce(o, n, v) {
+    defOnce(o, n, v) {
         if o.HasOwnProp(n)  ; We currently only support one constructor overload for each usage.
+            && o.%n% != v
             throw Error("Conflicting constructor found for " n, -1)
         o.DefineProp n, {value: v}
     }
     
-    ; FindTypeRef
-    ComCall(55, mdi, "uint", asm, "wstr", "Windows.Foundation.Metadata.StaticAttribute"
-        , "uint*", &tr:=0)
-    ; EnumMemberRefs
-    for mr in _rt_Enumerator(23, mdi, "uint", tr) {
-        ; GetMemberRefProps
-        ComCall(31, mdi, "uint", mr, "uint*", &ttype:=0, "ptr", 0, "uint", 0, "ptr", 0, "ptr", 0, "ptr", 0)
-        DefOnce o, 'StaticAttr', mr
+    searchFor(attrType, nameForSig) {
+        ; FindTypeRef
+        if ComCall(55, mdi, "uint", asm, "wstr", attrType, "uint*", &tr:=0, "int") != 0 {
+            defOnce(o, nameForSig(0), -1)
+            return
+        }
+        ; EnumMemberRefs
+        for mr in _rt_Enumerator(23, mdi, "uint", tr) {
+            ; GetMemberRefProps
+            ComCall(31, mdi, "uint", mr, "uint*", &ttype:=0
+                , "ptr", 0, "uint", 0, "ptr", 0
+                , "ptr*", &psig:=0, "uint*", &nsig:=0)
+            defOnce(o, nameForSig(psig), mr)
+        }
+        else {
+            defOnce(o, nameForSig(0), -1)
+            D '- no {} memberref in {}', attrType, o.name
+        }
     }
     
-    ; FindTypeRef
-    ComCall(55, mdi, "uint", asm, "wstr", "Windows.Foundation.Metadata.ActivatableAttribute"
-        , "uint*", &tr:=0)
-    ; EnumMemberRefs
-    for mr in _rt_Enumerator(23, mdi, "uint", tr) {
-        ; GetMemberRefProps
-        ComCall(31, mdi, "uint", mr, "uint*", &ttype:=0
-            , "ptr", 0, "uint", 0, "ptr", 0
-            , "ptr*", &psig:=0, "uint*", &nsig:=0)
-        if NumGet(psig, 3, "uchar") = 9 ; uint
-            DefOnce o, 'ActivatableAttr', mr
-        else
-            DefOnce o, 'FactoryAttr', mr
-    }
+    searchFor("Windows.Foundation.Metadata.StaticAttribute"
+        , psig => 'StaticAttr')
+    
+    searchFor("Windows.Foundation.Metadata.ActivatableAttribute"
+        , psig => NumGet(psig, 3, "uchar") = 9 ? 'ActivatableAttr' : 'FactoryAttr') ; 9 = uint (first arg is uint, not interface name)
+    
+    searchFor("Windows.Foundation.Metadata.ComposableAttribute"
+        , psig => 'ComposableAttr')
     
     return o.%retprop%
+}
+
+_rt_GetFieldConstant(mdi, field) {
+    mdt := ComObjQuery(mdi, "{D8F579AB-402D-4B8E-82D9-5D63B1065C68}") ; IMetaDataTables
+    
+    static tabConstant := 11, GetTableInfo := 9
+    ComCall(GetTableInfo, mdt, "uint", tabConstant
+        , "uint*", &cbRows := 0, "uint*", &cRows := 0
+        , "uint*", &cCols := 0, "uint*", &iKey := 0
+        , "ptr", 0)
+    
+    static colType := 0, colParent := 1, colValue := 2, GetColumn := 13, GetBlob := 15
+    Loop cRows {
+        ComCall(GetColumn, mdt, "uint", tabConstant, "uint", colParent, "uint", A_Index, "uint*", &value:=0)
+        if value != field
+            continue
+        ComCall(GetColumn, mdt, "uint", tabConstant, "uint", colValue, "uint", A_Index, "uint*", &value:=0)
+        ComCall(GetBlob, mdt, "uint", value, "uint*", &ndata:=0, "ptr*", &pdata:=0)
+        ComCall(GetColumn, mdt, "uint", tabConstant, "uint", colType, "uint", A_Index, "uint*", &value:=0)
+        ; Type must be one of the basic element types (2..14) or CLASS (18) with value 0.
+        ; WinRT only uses constants for enums, always I4 (8) or U4 (9).
+        return RtMarshal.SimpleType[value].GetReader()(pdata)
+        ;return {ptr: pdata, size: ndata}
+    }
 }
 
 class RtMarshal {
     static __new() {
         this.Classes := Map()
         this.Classes.CaseSense := "off"
+        this.SimpleType := st := Map()
+        for t in [
+            {E: 0x1, N: "Void"},
+            {E: 0x2, Size: 1, N: "Boolean", T: "char", I: (v => !!v)},
+            {E: 0x3, Size: 2, N: "Char16", T: "ushort", I: Ord, O: Chr},
+            {E: 0x4, Size: 1, N: "Int8", T: "char"},
+            {E: 0x5, Size: 1, N: "UInt8", T: "uchar"},
+            {E: 0x6, Size: 2, N: "Int16", T: "short"},
+            {E: 0x7, Size: 2, N: "UInt16", T: "ushort"},
+            {E: 0x8, Size: 4, N: "Int32", T: "int"},
+            {E: 0x9, Size: 4, N: "UInt32", T: "uint"},
+            {E: 0xa, Size: 8, N: "Int64", T: "int64"},
+            {E: 0xb, Size: 8, N: "UInt64", T: "uint64"},
+            {E: 0xc, Size: 4, N: "Single", T: "float"},
+            {E: 0xd, Size: 8, N: "Double", T: "double"},
+            {E: 0xe, Size: A_PtrSize, N: "String", T: "ptr"
+                , I: HStringFromString, O: HStringRet
+                , Iw: WindowsCreateString, Ow: WindowsGetString, Del: WindowsDeleteString},
+            {E: 0x18, Size: A_PtrSize, N: "IntPtr", T: "ptr"},
+            {E: 0x1c, N: "Object", T: "ptr", O: _rt_WrapInspectable},
+            ] {
+            this.%t.N% := st[t.E] := RtMarshal.Info(t)
+        }
+        this._IntPtr := RtMarshal.%'Int' A_PtrSize*8%
     }
-    static String := {
-        I: HStringFromString,
-        O: _rt_HStringRet,
-        T: "ptr"
-    }
-    static Char16 := {
-        I: Ord,
-        O: Chr,
-        T: "ushort"
-    }
-    static Boolean := {
-        I: v => !!v,
-        O: v => v,
-        T: "char"
-    }
-    static Object := {
-        I: v => v, ; TODO: validate type
-        O: ObjBindMethod(ComValue,, 13), ; TODO: wrap runtime type
-        T: "ptr"
-    }
-    static Void := {}
-}
-
-GetMarshalForClass(classname) =>
-    RtMarshal.Classes.get(classname, 0) ||
-    RtMarshal.Classes[classname] := {
-        T: "ptr",
-        I: v => v, ; TODO: validate type
-        O: WinRT._GetWrapFn(classname)
-    }
-
-DecodeSigType(mdi, &p, genericTypes:=false) {
-    static primitives := Map(
-        0x01, RtMarshal.Void,
-        0x02, RtMarshal.Boolean,
-        0x03, RtMarshal.Char16,
-        0x04, "char",
-        0x05, "uchar",
-        0x06, "short",
-        0x07, "ushort",
-        0x08, "int",
-        0x09, "uint",
-        0x0a, "int64",
-        0x0b, "uint64",
-        0x0c, "float",
-        0x0d, "double",
-        0x0e, RtMarshal.String,
-        0x18, "ptr",
-        0x19, "uptr",
-        0x1c, RtMarshal.Object,
-    )
-    b := NumGet(p++, "uchar")
-    if "" != (t := primitives.get(b, ""))
-        return t
-    switch b {
-        case 0x0f: ; ptr
-            ; return DecodeSigType(mdi, &p) '*'
-            throw Error("pointer type not handled")
-        case 0x10: ; ref
-            t := DecodeSigType(mdi, &p) '&'
-            ; throw Error("ref type not handled")
-            D '- unhandled ref type ' t
+    
+    class Info {
+        static Call(t) {
+            t.base := this.prototype
             return t
-        case 0x1D: ; array
-            t := DecodeSigType(mdi, &p) '[]'
-            ; throw Error("array type not handled")
-            D '- unhandled array type ' t
-            return t
-        ; case 0x11, 0x12: ; value type, class type
-        case 0x11: ; value type
-            t := RegExReplace(GetTypeRefProps(mdi, CorSigUncompressToken(&p), &scope)
-                , "^(Windows|System)\.(.*\.)?") (b=0x11 ? "^" : "")
-            D '- unhandled value type ' t
-            return "ptr" ; incorrect and unsafe for structs!
-        case 0x12: ; class type
-            t := GetTypeRefProps(mdi, CorSigUncompressToken(&p))
-            return GetMarshalForClass(t)
-        case 0x13: ; generic type parameter
-            ; return 'T' (NumGet(p++, "uchar") + 1)
-            if genericTypes {
-                return genericTypes[NumGet(p++, "uchar") + 1]
-            }
-            ; throw Error("generic type parameter not handled")
-            D '- unhandled generic type parameter #' (NumGet(p++, "uchar") + 1)
-            return "ptr"
-        case 0x15: ; GENERICINST <generic type> <argCnt> <arg1> ... <argn>
-            t := RegExReplace(DecodeMethodSigType(mdi, &p), '``\d+$') '<'
-            Loop argc := NumGet(p++, "uchar")
-                t .= (A_Index>1 ? ',' : '') . DecodeMethodSigType(mdi, &p)
-            t .= '>'
-            ; return t
-            ; throw Error("generic type not handled",, t)
-            D '- unhandled generic type ' t
-            return "ptr"
+        }
+        ToString() => this.N
+        GetReader(offset:=0) {
+            if this.HasProp('Ow')
+                return ((o,t,f,p) => f(NumGet(p,o,t))).Bind(offset, this.T, this.Ow)
+            if this.HasProp('O')
+                throw Error("Unsupported (has .O)", -1)
+            return NumGet.Bind( , offset, this.T)
+        }
+        GetWriter(offset:=0) {
+            numtype := this.T, inp := this.HasProp('Iw') ? this.Iw : this.HasProp('I') ? this.I : ""
+            return inp ? (ptr, value) => NumPut(numtype, inp(value), ptr, offset)
+                       : (ptr, value) => NumPut(numtype,     value , ptr, offset)
+        }
     }
-    ; return Format("{:02x}", b)
-    throw Error("type not handled",, Format("{:02x}", b))
-}
-
-DecodeSig(mdi, p, size, genericTypes:=false) {
-    if size < 3
-        throw Error("Invalid signature")
-    cconv := NumGet(p++, "uchar")
-    argc := NumGet(p++, "uchar") + 1 ; +1 for return type
-    return DecodeSigTypes(mdi, p, size - 2, argc, genericTypes)
-}
-
-DecodeSigTypes(mdi, p, size, count, genericTypes:=false) {
-    types := [], p2 := p + size
-    while p < p2 {
-        types.Push(DecodeSigType(mdi, &p, genericTypes))
-        --count
+    
+    static Ref(t) {
+        if t.HasProp('ref')
+            return t.ref
+        return t.ref := RtMarshal.Info({
+            T: t.T "*",
+            ; TODO: check in/out-ness instead of IsSet
+            I: (&v) => isSet(v) ? &v : &v := 0,
+            N: t.N "&" ; For debug only.
+        })
     }
-    if p != p2 || count
-        throw Error("Signature decoding error")
-    return types
 }
 
 MethodWrapper(idx, iid, types, name:=unset) {
     rettype := types.RemoveAt(1)
     cca := [], cca.Length := 1 + 2*types.Length
-    fa := [], fa.Length := types.Length + 1
-    fa[1] := ComObjQuery.Bind( , iid)
+    fa := [], fa.Capacity := types.Length + 1
+    if iid
+        fa.Push(ComObjQuery.Bind( , iid))
     if types.Length {
         for t in types {
+            if t is RtTypeInfo
+                t := t.Marshal
             if t is String 
                 cca[2*A_Index] := t
             else {
-                fa[1+A_Index] := t.I
+                t.HasProp('I') && fa.Push(t.I)
                 cca[2*A_Index] := t.T
             }
         }
     }
     if rettype != RtMarshal.Void {
+        if rettype is RtTypeInfo
+            rettype := rettype.Marshal
         if rettype is String
             cca.Push(rettype '*'), fr := Number
         else
-            cca.Push(rettype.T '*'), fr := rettype.O
+            cca.Push(rettype.T '*'), fr := rettype.HasProp('O') ? rettype.O : Number
     }
     fc := ComCall.Bind(idx, cca*)
     if IsSet(name)
@@ -425,8 +399,6 @@ MethodWrapper(idx, iid, types, name:=unset) {
     return fc
 }
 
-; fc := ComCall.Bind(idx, , "ptr", , "ptr*", )
-; _rt_filter_call_a_r.Bind(fc, [HString.s.Bind(HString)], _rt_HStringRet)
 
 _rt_filter_call_a_r(fc, fa, fr, args*) {
     try {
@@ -435,6 +407,7 @@ _rt_filter_call_a_r(fc, fa, fr, args*) {
         return (args.Push(&rv:=0), fc(args*), fr(rv))
     } catch as e {
         e.message .= "`n`nSource: " fc.Name
+        ; D '> STACK TRACE`n' e.stack
         throw
     }
 }
@@ -449,63 +422,182 @@ _rt_filter_call_r(fc, fr, args*) {
     return (args.Push(&rv:=0), fc(args*), fr(rv))
 }
 
-_rt_HStringRet(hstr) {
-	p := DllCall("combase.dll\WindowsGetStringRawBuffer", "ptr", hstr, "uint*", &len:=0, "ptr")
-    DllCall("combase.dll\WindowsDeleteString", "ptr", hstr)
-	return StrGet(p, -len, "UTF-16")
-}
 
 class RtClass extends Class {
+    static prototype.ptr := 0
+    __delete() {
+        (this.ptr) && ObjRelease(this.ptr)
+    }
+}
+
+class RtAny {
     static __new() {
-        this.prototype.ptr := 0
+        if this = RtAny ; Subclasses will inherit it anyway.
+            this.DefineProp('__set', {call: this.prototype.__set})
+    }
+    static Call(*) {
+        throw Error("This class is abstract and cannot be constructed.", -1, this.prototype.__class)
+    }
+    __set(name, *) {
+        throw PropertyError(Format('This value of type "{}" has no property named "{}".', type(this), name), -1)
+    }
+}
+
+class RtObject extends RtAny {
+    static __new() {
+        this.DefineProp('ptr', {value: 0})
+        this.prototype.DefineProp('ptr', {value: 0})
+        this.DefineProp('__delete', {call: this.prototype.__delete})
     }
     __delete() {
         (this.ptr) && ObjRelease(this.ptr)
     }
 }
 
-class RtObject extends Object {
-    static __new() {
-        this.ptr := 0
-        this.prototype.ptr := 0
-        this.prototype.DefineProp('__delete', {Call: this.__delete})
+class RtEnum extends RtAny {
+    static Call(n, p*) {
+        if e := this.__item.get(n, 0)
+            return e
+        return {n: n, base: this.prototype}
     }
-    static __delete() {
-        (this.ptr) && ObjRelease(this.ptr)
+    static Parse(v) { ; TODO: parse space-delimited strings for flag enums
+        if v is this
+            return v.n
+        if v is Number
+            return this[v].n
+        if v is String
+            return this.%v%.n
+        throw TypeError(Format('Value of type "{}" cannot be converted to {}.', type(v), this.prototype.__class), -1)
+    }
+    s => String(this.n) ; TODO: produce space-delimited strings for flag enums
+    ToString() => this.s
+}
+
+_rt_CreateClass(classname, baseclass) {
+    w := Class()
+    w.base := baseclass
+    w.prototype := {__class: classname, base: baseclass.prototype}
+    return w
+}
+
+_rt_CreateEnumWrapper(t) {
+    w := _rt_CreateClass(t.Name, RtEnum)
+    def(n, v) => w.DefineProp(n, {value: v})
+    def '__item', items := Map()
+    for f in t.Fields() {
+        switch f.flags {
+            case 0x601: ; Private | SpecialName | RTSpecialName
+                def '__basicType', f.type
+            case 0x8056: ; public | static | literal | hasdefault
+                def f.name, items[f.value] := {n: f.value, s: f.name, base: w.prototype}
+        }
+    }
+    return w
+}
+
+class RtStruct extends RtAny {
+    __new(ptr := unset) {
+        if !IsSet(ptr) {
+            this.DefineProp '__buf', {value: buf := Buffer(Max(this.Size, 8), 0)}
+            ptr := buf.ptr
+        }
+        this.DefineProp 'ptr', {value: ptr}
+    }
+    static GetInner(offset, outer) {
+        inner := this(outer.ptr + offset)
+        inner.DefineProp '__outer', {value: outer} ; Keep outer alive.
+        return inner
     }
 }
 
-_rt_GetParameterizedIID(names) {
-    static pfn := CallbackCreate(_rt_MetaDataLocate, "F")
+_rt_CreateStructWrapper(t) {
+    w := _rt_CreateClass(t.Name, RtStruct)
+    w.DefineProp 'Call', {call: Object.Call} ; Bypass RtAny.Call.
+    wp := w.prototype
+    offset := 0, alignment := 1, destructors := []
+    for f in t.Fields() {
+        ft := f.type
+        D '{} {} @{}', String(ft), f.name, offset
+        if ft is RtMarshal.Info {
+            falign := fsize := ft.Size
+            offset := align(offset, fsize)
+            wp.DefineProp f.name, {get: ft.GetReader(offset), set: ft.GetWriter(offset)}
+            if ft.HasProp('Del')
+                destructors.Push(make_primitive_dtor(offset, ft.T, ft.Del))
+        }
+        else switch ft.FundamentalType.Name {
+            case "ValueType":
+                wp.DefineProp f.name, {
+                    get: RtStruct.GetInner.Bind(w, offset),
+                    ; TODO: setter
+                }
+                fsize := ft.Class.prototype.Size
+                falign := ft.Class.__align
+            case "Enum":
+                wp.DefineProp f.name, make_enum_prop(ft.Class, offset)
+                falign := fsize := ft.Class.__basicType.Size
+            default:
+                throw Error(Format('Unsupported field type {} in struct {}', ft.Name, t.Name))
+        }
+        if alignment < falign
+            alignment := falign
+        offset += fsize
+    }
+    align(n, to) => (n + (to - 1)) // to * to
+    w.DefineProp '__align', {value: alignment}
+    wp.DefineProp 'Size', {value: align(offset, alignment)}
+    if destructors.Length {
+        struct_delete(destructors, this) {
+            if this.HasProp('__outer') ; Lifetime managed by outer RtStruct.
+                return
+            for d in destructors
+                d(this)
+            ; FIXME: call all destructors in the event of any one throwing
+        }
+        wp.DefineProp '__delete', {call: struct_delete.Bind(destructors)}
+    }
+    make_primitive_dtor(offset, bt, del) => (
+        struct => del(NumGet(struct, offset, bt))
+    )
+    make_enum_prop(cls, offset) {
+        local bt := cls.__basicType.T
+        return {
+            get: (outer) => cls(NumGet(outer, offset, bt)),
+            set: (outer, value) => NumPut(bt, cls.Parse(value), outer, offset)
+        }
+    }
+    return w
+}
+
+_rt_GetParameterizedIID(name, types) {
+    static vt := Buffer(A_PtrSize)
+    static pvt := NumPut("ptr", CallbackCreate(_rt_MetaDataLocate, "F"), vt) - A_PtrSize
     ; Make an array of pointers to the names.  StrPtr(names[1]) would return
     ; the address of a temporary string, so make more direct copies.
-    namePtrArr := Buffer(A_PtrSize * names.Length)
-    nameStr := ""
-    for name in names
-        nameStr .= name "|"
-    pStr := StrPtr(nameStr := RTrim(nameStr, "|"))
-    Loop Parse nameStr, "|" {
-        NumPut("ptr", pStr, namePtrArr, (A_Index-1)*A_PtrSize)
+    namePtrArr := Buffer(A_PtrSize * (1 + types.Length))
+    for t in types
+        name .= "|" String(t)
+    pStr := StrPtr(name)
+    Loop Parse name, "|" {
+        NumPut("ptr", pStr, namePtrArr, A_PtrSize * (A_Index-1))
         pStr := NumPut("ushort", 0, pStr += 2 * StrLen(A_LoopField))
     }
     DllCall("combase.dll\RoGetParameterizedTypeInstanceIID"
-        , "uint", names.Length, "ptr", namePtrArr
-        , "ptr*", pfn  ; Locator interface (only one virtual method, so passed with *).
+        , "uint", namePtrArr.Size//A_PtrSize, "ptr", namePtrArr
+        , "ptr*", pvt  ; "*" turns it into an "object" on DllCall's stack.
         , "ptr", oiid := GUID(), "ptr*", &pextra:=0, "hresult")
     DllCall("combase.dll\RoFreeParameterizedTypeExtra"
         , "ptr", pextra)
     return oiid
 }
 
-_rt_MetaDataLocate(pname, mdb) {
+_rt_MetaDataLocate(this, pname, mdb) {
     name := StrGet(pname, "UTF-16")
     ; mdb : IRoSimpleMetaDataBuilder -- unconventional interface with no base type
     try {
-        MetaDataModule.GetForTypeName(name, &mdm, &td)
-        typename := mdm.GetTypeDefProps(td, &flags)
-        if flags & 0x20 { ; tdInterface
-            if ComCall(60, mdm, "uint", td, "wstr", "Windows.Foundation.Metadata.GuidAttribute"
-                    , "ptr*", &pguid:=0, "ptr", 0) != 0
+        t := WinRT.GetType(name)
+        if t.IsInterface { ; tdInterface
+            if !(pguid := t.GUID)
                 throw Error("GUID not found for " name)
             if p := InStr(name, "``") {
                 ; SetParameterizedInterface
@@ -517,10 +609,9 @@ _rt_MetaDataLocate(pname, mdb) {
             }
         }
         else {
-            c := WinRT._GetClass(name)
+            t := WinRT.GetType(name).DefaultInterface
             ; SetRuntimeClassSimpleDefault
-            ComCall(4, mdb, "ptr", pname, "wstr", c.prototype.__DefaultIName
-                , "ptr", c.prototype.__DefaultIID)
+            ComCall(4, mdb, "ptr", pname, "wstr", t.Name, "ptr", t.GUID)
         }
     }
     catch as e {
