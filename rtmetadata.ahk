@@ -188,7 +188,7 @@ class MetaDataModule {
         ; IMetaDataDispenser::OpenScope
         ComCall(4, mdd, "wstr", path, "uint", 0
             , "ptr", IID_IMetaDataImport
-            , "ptr*", mdm := MetaDataModule())
+            , "ptr*", mdm := this())
         return mdm
     }
 }

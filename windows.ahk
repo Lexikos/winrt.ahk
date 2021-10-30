@@ -55,7 +55,7 @@ class RtNamespace {
         if this.HasOwnProp('_m')
             return
         this.DefineProp '_m', {
-            value: m := MetaDataModule.Open(RtNamespace.GetPath(this._name))
+            value: m := RtMetaDataModule.Open(RtNamespace.GetPath(this._name))
         }
         prefix := this._name "."
         ; Find all namespaces in this module by enumerating typedefs.

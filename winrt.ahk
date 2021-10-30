@@ -354,7 +354,7 @@ class WinRT {
             , "ptr", HStringFromString(typename)
             , "ptr", 0
             , "ptr", 0
-            , "ptr*", m := MetaDataModule()
+            , "ptr*", m := RtMetaDataModule()
             , "uint*", &td := 0
             , "hresult")
         static cache := Map()
@@ -441,6 +441,10 @@ class WinRT {
             throw Error(Format("Cannot resolve token 0x{:08x} to type info.", t), -1)
         }
     }
+}
+
+class RtMetaDataModule extends MetaDataModule {
+    
 }
 
 _rt_WrapInspectable(p, typeinfo:=false) {
