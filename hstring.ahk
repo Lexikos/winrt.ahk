@@ -1,8 +1,10 @@
 ; Wraps a HSTRING.  Takes ownership of the handle it is given.
 class HString {
 	__new(hstr := 0) => this.ptr := hstr
-	ToString() => WindowsGetString(this)
-	__delete() => DllCall("combase.dll\WindowsDeleteString", "ptr", this)
+	static __new() {
+        this.Prototype.DefineProp 'ToString', {call: WindowsGetString}
+        this.Prototype.DefineProp '__delete', {call: WindowsDeleteString}
+    }
 }
 
 ; Create HString for passing to ComCall/DllCall.  Has automatic cleanup.

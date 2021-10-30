@@ -57,28 +57,38 @@ class RtNamespace {
         this.DefineProp '_m', {
             value: m := RtMetaDataModule.Open(RtNamespace.GetPath(this._name))
         }
-        prefix := this._name "."
-        ; Find all namespaces in this module by enumerating typedefs.
-        for td in m.EnumTypeDefs() {
-            name := m.GetTypeDefProps(td)
+        prefix := this._name '.'
+        ; Find all namespaces strings in this module.
+        static tabTypeDef := 2, colNamespace := 2
+        static GetTableInfo := 9, GetColumn := 13, GetString := 14
+        mdt := ComObjQuery(m, "{D8F579AB-402D-4B8E-82D9-5D63B1065C68}") ; IMetaDataTables
+        ComCall(GetTableInfo, mdt, "uint", tabTypeDef
+            , "ptr", 0, "uint*", &cRows := 0, "ptr", 0, "ptr", 0, "ptr", 0)
+        ; Find all unique namespace strings referenced by the TypeDef table.
+        unique_names := Map()
+        Loop cRows {
+            ComCall(GetColumn, mdt, "uint", tabTypeDef, "uint", colNamespace, "uint", A_Index, "uint*", &index:=0)
+            unique_names[index] := 1
+        }
+        ; For each unique namespace string...
+        for index in unique_names {
+            ComCall(GetString, mdt, "uint", index, "ptr*", &name:=0)
+            name := StrGet(name, "UTF-8")
             if SubStr(name, 1, StrLen(prefix)) = prefix {
-                x := this, p2 := StrLen(prefix)
-                ; For each child namespace in this type name...
-                while p2 := InStr(name, ".",, p1 := p2 + 1) {
-                    name_part := SubStr(name, p1, p2 - p1)
-                    if !x.HasOwnProp(name_part) {
-                        ns := RtNamespace(SubStr(name, 1, p2 - 1))
+                x := this, len := StrLen(prefix) - 1
+                Loop Parse SubStr(name, len + 2), '.' {
+                    len += 1 + StrLen(A_LoopField)
+                    if !x.HasOwnProp(A_LoopField) {
+                        ns := RtNamespace(SubStr(name, 1, len))
                         ; Since this namespace hasn't already been discovered as a *.winmd,
                         ; it must only be defined in this module.
                         ns.DefineProp '_m', {value: m}
-                        x.DefineProp name_part, {value: ns}
+                        x.DefineProp A_LoopField, {value: ns}
                     }
-                    x := x.%name_part%
+                    x := x.%A_LoopField%
                 }
             }
-            else {
-                D 'unexpected typedef ' name
-            }
+            ; else it should be either "" or this._name itself.
         }
     }
     static GetPath(name) => A_WinDir "\System32\WinMetadata\" name ".winmd"

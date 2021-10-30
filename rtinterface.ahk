@@ -1,51 +1,57 @@
 
-class RtMetaDataItem {
-    __new(mdm, token) {
+#include ffi.ahk
+
+class RtTypeInfo {
+    __new(mdm, token, typeArgs:=false) {
         this.m := mdm
         this.t := token
-    }
-}
-
-class RtRootTypeInfo {
-    __new(name, baseType, cls:=unset) {
-        this.Name := name
-        this.BaseType := baseType
-        IsSet(cls) && this.Class := cls
-    }
-    ToString() => this.Name
-    FundamentalType => this
-    static ValueType := RtRootTypeInfo("ValueType", 0)
-    static   Enum := RtRootTypeInfo("Enum", this.ValueType)
-    static RefType := RtRootTypeInfo("RefType", 0)
-    static   Object := RtRootTypeInfo("Object", this.RefType, RtObject)
-    static   Delegate := RtRootTypeInfo("Delegate", this.RefType)
-    static   Interface := RtRootTypeInfo("Interface", this.RefType, RtObject)
-    static Attribute := RtRootTypeInfo("Attribute", 0)  ; Used only as metadata.
-}
-
-class RtTypeInfo extends RtMetaDataItem {
-    __new(mdm, token, typeArgs:=false) {
-        super.__new(mdm, token)
         this.typeArgs := typeArgs
-    }
-
-    static cache := Map(
-        ; All WinRT typedefs tested on Windows 10.0.19043 derive from one of these.
-        ; System.Guid might also be used in parameters, but isn't implemented yet.
-        "System.Attribute", RtRootTypeInfo.Attribute,
-        "System.Enum", RtRootTypeInfo.Enum,
-        "System.MulticastDelegate", RtRootTypeInfo.Delegate,
-        "System.Object", RtRootTypeInfo.Object,
-        "System.ValueType", RtRootTypeInfo.ValueType,
-    )
-    static __new() {
-        if this != RtTypeInfo
-            return
-        cache := this.cache
-        for e, t in RtMarshal.SimpleType {
-            cache[t.N] := t
+        
+        ; Determine the base type and corresponding RtTypeInfo subclass.
+        mdm.GetTypeDefProps(token, &flags, &tbase)
+        switch {
+            case flags & 0x20:
+                this.base := RtTypeInfo.Interface.Prototype
+            case (tbase & 0x00ffffff) = 0:  ; Nil token.
+                throw Error(Format('Type "{}" has no base type or interface flag (flags = 0x{:x})', this.Name, flags))
+            default:
+                basetype := this.m.GetTypeByToken(tbase)
+                if basetype is RtTypeInfo
+                    this.base := basetype.base
+                else
+                    this.base := basetype.TypeClass.Prototype
+                this.SuperType := basetype
         }
     }
+    
+    class Interface extends RtTypeInfo {
+        Class => this.m.CreateInterfaceWrapper(this)
+        ArgPassInfo => RtInterfaceArgPassInfo(this)
+        ReadWriteInfo => RtInterfaceReadWriteInfo(this)
+    }
+    
+    class Object extends RtTypeInfo {
+        Class => this.m.CreateClassWrapper(this)
+        ArgPassInfo => RtObjectArgPassInfo(this)
+    }
+    
+    class Struct extends RtTypeInfo {
+        Class => _rt_CreateStructWrapper(this)
+        Size => this.Class.Prototype.Size
+        ReadWriteInfo => ReadWriteInfo.FromClass(this.Class)
+    }
+    
+    class Enum extends RtTypeInfo {
+        Class => _rt_CreateEnumWrapper(this)
+        ArgPassInfo => RtEnumArgPassInfo(this)
+    }
+    
+    class Delegate extends RtTypeInfo {
+        ArgPassInfo => RtDelegateArgPassInfo(this)
+    }
+    
+    ArgPassInfo => false
+    ReadWriteInfo => false
     
     Name => this.ToString()
     
@@ -58,23 +64,7 @@ class RtTypeInfo extends RtMetaDataItem {
         }
         return name
     }
-    
-    BaseType => _rt_memoize(this, 'BaseType')
-    _init_BaseType() {
-        this.m.GetTypeDefProps(this.t, &flags, &tbase)
-        switch {
-            case flags & 0x20:
-                return RtRootTypeInfo.Interface
-            case (tbase & 0x00ffffff) = 0:  ; Nil token.
-                throw Error(Format('Type "{}" has no base type or interface flag (flags = 0x{:x})', this.Name, flags))
-            default:
-                return WinRT.GetTypeByToken(this.m, tbase)
-        }
-    }
 
-    IsInterface => this.BaseType = RtRootTypeInfo.Interface
-    FundamentalType => this.BaseType.FundamentalType
-    
     GUID => _rt_memoize(this, 'GUID')
     _init_GUID() => this.typeArgs
         ? _rt_GetParameterizedIID(this.m.GetTypeDefProps(this.t), this.typeArgs)
@@ -145,87 +135,15 @@ class RtTypeInfo extends RtMetaDataItem {
                 return false
             ; GetInterfaceImplProps
             ComCall(13, this.m, "uint", impltoken, "ptr", 0, "uint*", &t:=0)
-            typeinfo := WinRT.GetTypeByToken(this.m, t, this.typeArgs)
+            typeinfo := this.m.GetTypeByToken(t, this.typeArgs)
             return true
         }
         return next_outer
     }
-
-    ; Marshalling
-    Marshal => _rt_memoize(this, 'Marshal')
-    _init_Marshal() {
-        local proto
-        ; FIXME: use OOP for this, not switch
-        switch (String(this.FundamentalType)) {
-        case "Interface":
-            ; Attempt to get runtime class (at runtime) to make all methods
-            ; available.  This sometimes fails for generic interfaces, so pass
-            ; the interface as a default type to wrap.
-            return RtMarshal.Info({
-                T: "ptr",
-                O: _rt_WrapInspectable.Bind(, this)
-            })
-        case "Object":
-            return RtMarshal.Info({
-                T: "ptr",
-                O: WrapClass(p) => p && {
-                    ptr: p,
-                    base: IsSet(proto) ? proto : proto := this.Class.prototype
-                }
-            })
-        case "Enum":
-            return RtMarshal.Info({
-                T: "uint",
-                O: this.Class,
-                I: this.Class.Parse.Bind(this.Class)
-            })
-        case "ValueType":
-            return _init_ValueType_Marshal()
-        case "Delegate":
-            ; TODO: implement delegate support
-            D '! delegate type {} will be treated as ptr', this.Name
-            return RtMarshal.Info({T: "ptr"})
-        }
-        _init_ValueType_Marshal() {
-            local cls := this.Class
-            local size := cls.prototype.Size
-            if size = 8 || size = 4 {
-                local nt := size > A_PtrSize ? "int64" : "ptr"
-                return RtMarshal.Info({
-                    T: nt,
-                    I: NumGet.Bind( , nt),
-                    O: n => (
-                        NumPut("int64", n, newstruct := cls()),
-                        newstruct
-                    )
-                })
-            }
-            ; else if size < 8
-            else {
-                throw Error("Struct of size " size " not supported.",, String(this))
-            }
-        }
-        unsupported_type(mode, *) {
-            throw Error(Format('{} type "{}" is not supported', mode, String(this)), -2)
-        }
-        D 'Unsupported - {} : {}', String(this), String(this.FundamentalType)
-        return RtMarshal.Info({T: "ptr", I: unsupported_type.Bind("Parameter"), O: unsupported_type.Bind("Return")})
-    }
-
-    Class => _rt_memoize(this, 'Class')
-    _init_Class() {
-        d_scope(&dbg, this.Name)
-        switch (String(this.FundamentalType)) {
-            case "Interface": return this.m.CreateInterfaceWrapper(this)
-            case "Object": return this.m.CreateClassWrapper(this)
-            case "Enum": return _rt_CreateEnumWrapper(this)
-            case "ValueType": return _rt_CreateStructWrapper(this)
-        }
-        throw PropertyError("Class property not valid for " String(this.FundamentalType))
-    }
 }
 
 class RtDecodedType {
+    FundamentalType => this
 }
 
 class RtTypeArg extends RtDecodedType {
@@ -242,19 +160,35 @@ class RtTypeMod extends RtDecodedType {
 }
 
 class RtPtrType extends RtTypeMod {
-    ; static prototype.T := "ptr"
+    ArgPassInfo => ArgPassInfo('Unsupported', false, false)
     ToString() => String(this.inner) "*"
 }
 
 class RtRefType extends RtTypeMod {
     ; TODO: check in/out-ness instead of IsSet
-    static prototype.I := (&v) => isSet(v) ? &v : &v := 0
-    T => this.inner.T '*'
+    __new(inner) {
+        super.__new(inner)
+        if inner.ArgPassInfo {
+            this.ArgPassInfo := ArgPassInfo(
+                inner.ArgPassInfo.NativeType '*',
+                refType_ScriptToNative(&v) => isSet(v) ? &v : &v := 0,
+                false
+            )
+        }
+        else {
+            if !(inner is RtTypeInfo.Struct)
+                MsgBox 'DEBUG: RtRefType being constructed for type "' String(inner) '", which has no ArgPassInfo'
+            ; TODO: perform type checking in ScriptToNative
+            this.ArgPassInfo := FFITypes.IntPtr.ArgPassInfo
+        }
+    }
+    ScriptToNative => (&v) => isSet(v) ? &v : &v := 0
+    NativeType => this.inner.NativeType '*'
     ToString() => String(this.inner) "&"
 }
 
 class RtArrayType extends RtTypeMod {
-    T => 'Unsupported'
+    ArgPassInfo => ArgPassInfo.Unsupported
     ToString() => String(this.inner) "[]"
 }
 
@@ -318,8 +252,7 @@ _rt_DecodeSigGenericInst(m, &p, p2, typeArgs:=false) {
 }
 
 _rt_DecodeSigType(m, &p, p2, typeArgs:=false) {
-    ; FIXME: replace RtMarshal primitives?
-    static primitives := RtMarshal.SimpleType
+    static primitives := _rt_GetElementTypeMap()
     static modifiers := Map(
         0x0f, RtPtrType,
         0x10, RtRefType,
@@ -332,7 +265,7 @@ _rt_DecodeSigType(m, &p, p2, typeArgs:=false) {
         return modt(_rt_DecodeSigType(m, &p, p2, typeArgs))
     switch b {
         case 0x11, 0x12: ; value type, class type
-            return WinRT.GetTypeByToken(m, CorSigUncompressToken(&p))
+            return m.GetTypeByToken(CorSigUncompressToken(&p))
         case 0x13: ; generic type parameter
             if typeArgs
                 return typeArgs[NumGet(p++, "uchar") + 1]
@@ -345,4 +278,26 @@ _rt_DecodeSigType(m, &p, p2, typeArgs:=false) {
             return _rt_DecodeSigType(m, &p, p2, typeArgs)
     }
     throw Error("type not handled",, Format("{:02x}", b))
+}
+
+CorSigUncompressedDataSize(p) => (
+    (NumGet(p, "uchar") & 0x80) = 0x00 ? 1 :
+    (NumGet(p, "uchar") & 0xC0) = 0x80 ? 2 : 4
+)
+CorSigUncompressData(&p) {
+    if (NumGet(p, "uchar") & 0x80) = 0x00
+        return  NumGet(p++, "uchar")
+    if (NumGet(p, "uchar") & 0xC0) = 0x80
+        return (NumGet(p++, "uchar") & 0x3f) << 8
+            |   NumGet(p++, "uchar")
+    else
+        return (NumGet(p++, "uchar") & 0x1f) << 24
+            |   NumGet(p++, "uchar") << 16
+            |   NumGet(p++, "uchar") << 8
+            |   NumGet(p++, "uchar")
+}
+CorSigUncompressToken(&p) {
+    tk := CorSigUncompressData(&p)
+    return [0x02000000, 0x01000000, 0x1b000000, 0x72000000][(tk & 3) + 1]
+        | (tk >> 2)
 }

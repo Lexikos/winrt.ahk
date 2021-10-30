@@ -46,6 +46,7 @@ class MetaDataModule {
     
     CreateInterfaceWrapper(t) {
         w := _rt_CreateClass(t.Name, RtObject)
+        t.DefineProp 'Class', {value: w}
         this.AddInterfaceToWrapper(w.prototype, t, true)
         addreq(w.prototype, t)
         addreq(w, t) {
@@ -58,11 +59,12 @@ class MetaDataModule {
     }
     
     CreateClassWrapper(t) {
-        if (baseclass := t.BaseType).HasProp('Class')
+        if (baseclass := t.SuperType).HasProp('Class')
             baseclass := baseclass.Class
         else
             throw Error("This type is not a class",, String(baseclass))
         w := _rt_CreateClass(classname := t.Name, baseclass)
+        t.DefineProp 'Class', {value: w}
         ; Add any constructors:
         this.AddFactoriesToWrapper(w, t)
         ; Add static interfaces to the class:
@@ -84,8 +86,12 @@ class MetaDataModule {
                 isdefault := isclass && ComCall(60, this, "uint", impl
                     , "wstr", "Windows.Foundation.Metadata.DefaultAttribute"
                     , "ptr", 0, "ptr", 0) = 0
-                if isdefault
-                    t.DefineProp 'DefaultInterface', {value: ti}
+                if isdefault {
+                    ; This is currently assigned to the Class and not t so that
+                    ; t.Class.__DefaultInterface will cause this code to execute
+                    ; if needed (i.e. if the class hasn't been wrapped yet).
+                    w.DefineProp '__DefaultInterface', {value: ti}
+                }
                 if wrapped.has(ti_name := ti.Name)
                     continue
                 wrapped[ti_name] := true
@@ -109,13 +115,11 @@ class MetaDataModule {
         namebuf := Buffer(2*MAX_NAME_CCH)
         DllCall("ole32\StringFromGUID2", "ptr", pguid, "ptr", namebuf, "int", MAX_NAME_CCH)
         iid := StrGet(namebuf)
-        d_scope(&dbg, iid ' ' t.Name)
         name_prefix := w.HasOwnProp('prototype') ? w.prototype.__class ".Prototype." : w.__class "."
         for method in t.Methods() {
             name := nameoverride ? nameoverride : method.name
-            D name DecodeMethodSig(this, method.sig.ptr, method.sig.size)
             ; TODO: signature abstraction?
-            types := _rt_DecodeSig(this, method.sig.ptr, method.sig.size, t.typeArgs)
+            types := t.MethodArgTypes(method.sig)
             wrapper := MethodWrapper(5 + A_Index, iid, types, name_prefix name)
             if method.flags & 0x400 { ; tdSpecialName
                 switch SubStr(name, 1, 4) {
@@ -181,6 +185,9 @@ class MetaDataModule {
     }
     
     static Open(path) {
+        static CLSID_CorMetaDataDispenser := GUID("{E5CB7A31-7512-11d2-89CE-0080C792E5D8}")
+        static IID_IMetaDataDispenser := GUID("{809C652E-7396-11D2-9771-00A0C9B4D50C}")
+        static IID_IMetaDataImport := GUID("{7DAC8207-D3AE-4C75-9B67-92801A497D44}")
         #DllLoad rometadata.dll
         DllCall("rometadata.dll\MetaDataGetDispenser"
             , "ptr", CLSID_CorMetaDataDispenser, "ptr", IID_IMetaDataDispenser
@@ -259,8 +266,9 @@ _rt_CacheAttributeCtors(mdi, o, retprop) {
             defOnce(o, nameForSig(psig), mr)
         }
         else {
+            ; This module doesn't contain any references to attrType, so none of
+            ; its typedefs use that attribute.  Set -1 (invalid) to avoid reentry.
             defOnce(o, nameForSig(0), -1)
-            D '- no {} memberref in {}', attrType, o.name
         }
     }
     
@@ -281,9 +289,7 @@ _rt_GetFieldConstant(mdi, field) {
     
     static tabConstant := 11, GetTableInfo := 9
     ComCall(GetTableInfo, mdt, "uint", tabConstant
-        , "uint*", &cbRows := 0, "uint*", &cRows := 0
-        , "uint*", &cCols := 0, "uint*", &iKey := 0
-        , "ptr", 0)
+        , "ptr", 0, "uint*", &cRows := 0, "ptr", 0, "ptr", 0, "ptr", 0)
     
     static colType := 0, colParent := 1, colValue := 2, GetColumn := 13, GetBlob := 15
     Loop cRows {
@@ -295,140 +301,160 @@ _rt_GetFieldConstant(mdi, field) {
         ComCall(GetColumn, mdt, "uint", tabConstant, "uint", colType, "uint", A_Index, "uint*", &value:=0)
         ; Type must be one of the basic element types (2..14) or CLASS (18) with value 0.
         ; WinRT only uses constants for enums, always I4 (8) or U4 (9).
-        return RtMarshal.SimpleType[value].GetReader()(pdata)
+        static primitives := _rt_GetElementTypeMap()
+        return primitives[value].ReadWriteInfo.GetReader()(pdata)
         ;return {ptr: pdata, size: ndata}
     }
 }
 
-class RtMarshal {
-    static __new() {
-        this.Classes := Map()
-        this.Classes.CaseSense := "off"
-        this.SimpleType := st := Map()
-        for t in [
-            {E: 0x1, N: "Void"},
-            {E: 0x2, Size: 1, N: "Boolean", T: "char", I: (v => !!v)},
-            {E: 0x3, Size: 2, N: "Char16", T: "ushort", I: Ord, O: Chr},
-            {E: 0x4, Size: 1, N: "Int8", T: "char"},
-            {E: 0x5, Size: 1, N: "UInt8", T: "uchar"},
-            {E: 0x6, Size: 2, N: "Int16", T: "short"},
-            {E: 0x7, Size: 2, N: "UInt16", T: "ushort"},
-            {E: 0x8, Size: 4, N: "Int32", T: "int"},
-            {E: 0x9, Size: 4, N: "UInt32", T: "uint"},
-            {E: 0xa, Size: 8, N: "Int64", T: "int64"},
-            {E: 0xb, Size: 8, N: "UInt64", T: "uint64"},
-            {E: 0xc, Size: 4, N: "Single", T: "float"},
-            {E: 0xd, Size: 8, N: "Double", T: "double"},
-            {E: 0xe, Size: A_PtrSize, N: "String", T: "ptr"
-                , I: HStringFromString, O: HStringRet
-                , Iw: WindowsCreateString, Ow: WindowsGetString, Del: WindowsDeleteString},
-            {E: 0x18, Size: A_PtrSize, N: "IntPtr", T: "ptr"},
-            {E: 0x1c, N: "Object", T: "ptr", O: _rt_WrapInspectable},
-            ] {
-            this.%t.N% := st[t.E] := RtMarshal.Info(t)
-        }
-        this._IntPtr := RtMarshal.%'Int' A_PtrSize*8%
-    }
-    
-    class Info {
-        static Call(t) {
-            t.base := this.prototype
-            return t
-        }
-        ToString() => this.N
-        GetReader(offset:=0) {
-            if this.HasProp('Ow')
-                return ((o,t,f,p) => f(NumGet(p,o,t))).Bind(offset, this.T, this.Ow)
-            if this.HasProp('O')
-                throw Error("Unsupported (has .O)", -1)
-            return NumGet.Bind( , offset, this.T)
-        }
-        GetWriter(offset:=0) {
-            numtype := this.T, inp := this.HasProp('Iw') ? this.Iw : this.HasProp('I') ? this.I : ""
-            return inp ? (ptr, value) => NumPut(numtype, inp(value), ptr, offset)
-                       : (ptr, value) => NumPut(numtype,     value , ptr, offset)
+_rt_GetElementTypeMap() {
+    static etm
+    if !IsSet(etm) {
+        etm := Map()
+        eta := [
+            0x1, 'Void',
+            0x2, 'Boolean',
+            0x3, 'Char16',
+            0x4, 'Int8',
+            0x5, 'UInt8',
+            0x6, 'Int16',
+            0x7, 'UInt16',
+            0x8, 'Int32',
+            0x9, 'UInt32',
+            0xa, 'Int64',
+            0xb, 'UInt64',
+            0xc, 'Single',
+            0xd, 'Double',
+            0xe, 'String',
+            0x18, 'IntPtr',
+            0x1c, 'Object',
+        ]
+        i := 1
+        loop eta.length//2 {
+            etm[eta[i]] := RtRootTypes.%eta[i+1]%
+            i += 2
         }
     }
-    
-    static Ref(t) {
-        if t.HasProp('ref')
-            return t.ref
-        return t.ref := RtMarshal.Info({
-            T: t.T "*",
-            ; TODO: check in/out-ness instead of IsSet
-            I: (&v) => isSet(v) ? &v : &v := 0,
-            N: t.N "&" ; For debug only.
-        })
-    }
+    return etm
 }
 
 MethodWrapper(idx, iid, types, name:=unset) {
     rettype := types.RemoveAt(1)
-    cca := [], cca.Length := 1 + 2*types.Length
-    fa := [], fa.Capacity := types.Length + 1
+    cca := [] ;, cca.Length := 1 + 2*types.Length, ccac := 0
+    stn := Map()
     if iid
-        fa.Push(ComObjQuery.Bind( , iid))
-    if types.Length {
-        for t in types {
-            if t is RtTypeInfo
-                t := t.Marshal
-            if t is String 
-                cca[2*A_Index] := t
-            else {
-                t.HasProp('I') && fa.Push(t.I)
-                cca[2*A_Index] := t.T
+        stn[1] := ComObjQuery.Bind( , iid)
+    args_to_expand := Map()
+    for t in types {
+        if pass := t.ArgPassInfo {
+            if pass.ScriptToNative
+                stn[1 + A_Index] := pass.ScriptToNative
+            cca.Push( , pass.NativeType)
+        }
+        else {
+            if !InStr('Struct|Guid', String(t.FundamentalType))
+                MsgBox 'DEBUG: arg type ' String(t) ' of ' name ' is not a struct and has no ArgPassInfo'
+            arg_size := t.Size
+            if arg_size <= 8 || A_PtrSize = 4 {
+                ; On x86, all structs need to be copied by value into the parameter list.
+                ; On x64, structs <= 8 bytes need to be copied but larger structs are
+                ; passed by value.
+                ; Not sure how ARM64 does it.
+                args_to_expand[A_Index] := arg_size
+                loop ceil(arg_size / A_PtrSize)
+                    cca.Push( , 'ptr')
             }
+            else {
+                ; Large struct to be passed by address.
+                cca.Push( , 'ptr')
+            }
+            ; TODO: check type of incoming parameter value
         }
     }
-    if rettype != RtMarshal.Void {
-        if rettype is RtTypeInfo
-            rettype := rettype.Marshal
-        if rettype is String
-            cca.Push(rettype '*'), fr := Number
-        else
-            cca.Push(rettype.T '*'), fr := rettype.HasProp('O') ? rettype.O : Number
+    if rettype != FFITypes.Void {
+        if pass := rettype.ArgPassInfo {
+            fri := () => &newvarref := 0
+            cca.Push( , pass.NativeType '*')
+            frr := ((nts, &ref) => nts(ref)).Bind(pass.NativeToScript || Number)
+        }
+        else {
+            ; Struct?
+            if !InStr('Struct|Guid', String(rettype.FundamentalType))
+                MsgBox 'DEBUG: return type ' String(rettype) ' of ' name ' is not a struct and has no ArgPassInfo'
+            fri := rettype.Class
+            cca.Push( , 'ptr')
+            frr := false
+        }
     }
+    else {
+        frr := fri := false
+    }
+    ; Build the core ComCall function with predetermined type parameters.
     fc := ComCall.Bind(idx, cca*)
+    ; Define internal properties for use by _rt_call.
     if IsSet(name)
         fc.DefineProp 'Name', {value: name}  ; For our use debugging; has no effect on any built-in stuff.
-    fc := IsSet(fr)
-        ? _rt_filter_call_a_r.Bind(fc, fa, fr)
-        : _rt_filter_call_a.Bind(fc, fa)
     fc.DefineProp 'MinParams', pv := {value: 1 + types.Length}  ; +1 for `this`
+    fc.DefineProp 'MaxParams', pv
+    ; Compose the ComCall and parameter filters into a function.
+    fc := _rt_call.Bind(fc, stn, fri, frr)
+    if args_to_expand.Count
+        fc := _rt_get_struct_expander(args_to_expand, fc)
+    ; Define external properties for use by OverloadedFunc and others.
+    fc.DefineProp 'MinParams', pv
     fc.DefineProp 'MaxParams', pv
     return fc
 }
 
 
-_rt_filter_call_a_r(fc, fa, fr, args*) {
-    try {
-        for f in fa
-            IsSet(f) && args[A_Index] := f(args[A_Index])
-        return (args.Push(&rv:=0), fc(args*), fr(rv))
-    } catch as e {
-        e.message .= "`n`nSource: " fc.Name
-        ; D '> STACK TRACE`n' e.stack
-        throw
+_rt_get_struct_expander(sizes, fc) {
+    ; Map the incoming parameter index and size to outgoing parameter index and size.
+    ismap := Map(), offset := 0
+    for i, size in sizes {
+        if !IsSet(size)
+            continue
+        ismap[i + offset] := size
+        offset += Ceil(size / A_PtrSize) - 1
     }
+    return _rt_expand_struct_args.Bind(ismap, fc)
 }
 
-_rt_filter_call_a(fc, fa, args*) {
-    for f in fa
-        IsSet(f) && args[A_Index] := f(args[A_Index])
-    return (fc(args*), "")
-}
-
-_rt_filter_call_r(fc, fr, args*) {
-    return (args.Push(&rv:=0), fc(args*), fr(rv))
-}
-
-
-class RtClass extends Class {
-    static prototype.ptr := 0
-    __delete() {
-        (this.ptr) && ObjRelease(this.ptr)
+_rt_expand_struct_args(ismap, fc, args*) {
+    for i, size in ismap {
+        ; Removing struct from args shouldn't cause its destructor to be called (when this
+        ; function returns) because it should still be on the caller's stack.  For simple
+        ; structs it doesn't matter either way, because their values are copied here.
+        struct := args.RemoveAt(i), new_args := []
+        ; This specifically allows NumGet to read past the end of the struct when the size
+        ; is not a multiple of A_PtrSize, with the additional bytes being "undefined".
+        ptr := struct.ptr, endptr := ptr + struct.size
+        while ptr < endptr
+            new_args.Push(NumGet(ptr, 'ptr')), ptr += A_PtrSize
+        args.InsertAt(i, new_args*)
     }
+    return fc(args*)
 }
+
+_rt_rethrow(fc, e) {
+    e.message .= "`n`nSource: " fc.Name
+    ; D '> STACK TRACE`n' e.stack
+    throw
+}
+
+_rt_call(fc, fa, fri, frr, args*) {
+    ; try {
+        if args.Length != fc.MinParams
+            throw Error(Format('Too {} parameters passed to function {}.', args.Length < fc.MinParams ? 'few' : 'many', fc.Name), -1)
+        for i, f in fa
+            args[i] := f(args[i])
+        (fri) && args.Push(fri())
+        fc(args*)
+        return frr ? frr(args.Pop()) : fri ? args.Pop() : ""
+    ; } catch as e {
+    ;     _rt_rethrow(fc, e)
+    ; }
+}
+
 
 class RtAny {
     static __new() {
@@ -454,25 +480,6 @@ class RtObject extends RtAny {
     }
 }
 
-class RtEnum extends RtAny {
-    static Call(n, p*) {
-        if e := this.__item.get(n, 0)
-            return e
-        return {n: n, base: this.prototype}
-    }
-    static Parse(v) { ; TODO: parse space-delimited strings for flag enums
-        if v is this
-            return v.n
-        if v is Number
-            return this[v].n
-        if v is String
-            return this.%v%.n
-        throw TypeError(Format('Value of type "{}" cannot be converted to {}.', type(v), this.prototype.__class), -1)
-    }
-    s => String(this.n) ; TODO: produce space-delimited strings for flag enums
-    ToString() => this.s
-}
-
 _rt_CreateClass(classname, baseclass) {
     w := Class()
     w.base := baseclass
@@ -480,93 +487,61 @@ _rt_CreateClass(classname, baseclass) {
     return w
 }
 
-_rt_CreateEnumWrapper(t) {
-    w := _rt_CreateClass(t.Name, RtEnum)
-    def(n, v) => w.DefineProp(n, {value: v})
-    def '__item', items := Map()
-    for f in t.Fields() {
-        switch f.flags {
-            case 0x601: ; Private | SpecialName | RTSpecialName
-                def '__basicType', f.type
-            case 0x8056: ; public | static | literal | hasdefault
-                def f.name, items[f.value] := {n: f.value, s: f.name, base: w.prototype}
-        }
-    }
-    return w
-}
-
-class RtStruct extends RtAny {
-    __new(ptr := unset) {
-        if !IsSet(ptr) {
-            this.DefineProp '__buf', {value: buf := Buffer(Max(this.Size, 8), 0)}
-            ptr := buf.ptr
-        }
-        this.DefineProp 'ptr', {value: ptr}
-    }
-    static GetInner(offset, outer) {
-        inner := this(outer.ptr + offset)
-        inner.DefineProp '__outer', {value: outer} ; Keep outer alive.
-        return inner
-    }
-}
-
 _rt_CreateStructWrapper(t) {
-    w := _rt_CreateClass(t.Name, RtStruct)
-    w.DefineProp 'Call', {call: Object.Call} ; Bypass RtAny.Call.
+    w := _rt_CreateClass(t.Name, ValueType)
+    t.DefineProp 'Class', {value: w}
     wp := w.prototype
-    offset := 0, alignment := 1, destructors := []
+    offset := 0, alignment := 1
+    readwriters := Map(), destructors := []
     for f in t.Fields() {
         ft := f.type
-        D '{} {} @{}', String(ft), f.name, offset
-        if ft is RtMarshal.Info {
-            falign := fsize := ft.Size
-            offset := align(offset, fsize)
-            wp.DefineProp f.name, {get: ft.GetReader(offset), set: ft.GetWriter(offset)}
-            if ft.HasProp('Del')
-                destructors.Push(make_primitive_dtor(offset, ft.T, ft.Del))
+        rwi := ReadWriteInfo.ForType(ft)
+        fsize := rwi.Size
+        falign := rwi.HasProp('Align') ? rwi.Align : fsize
+        offset := align(offset, fsize)
+        wp.DefineProp f.name, {
+            get: reader := rwi.GetReader(offset),
+            set: writer := rwi.GetWriter(offset)
         }
-        else switch ft.FundamentalType.Name {
-            case "ValueType":
-                wp.DefineProp f.name, {
-                    get: RtStruct.GetInner.Bind(w, offset),
-                    ; TODO: setter
-                }
-                fsize := ft.Class.prototype.Size
-                falign := ft.Class.__align
-            case "Enum":
-                wp.DefineProp f.name, make_enum_prop(ft.Class, offset)
-                falign := fsize := ft.Class.__basicType.Size
-            default:
-                throw Error(Format('Unsupported field type {} in struct {}', ft.Name, t.Name))
-        }
+        readwriters[reader] := writer
+        if fd := rwi.GetDeleter(offset)
+            destructors.Push(fd)
         if alignment < falign
             alignment := falign
         offset += fsize
     }
     align(n, to) => (n + (to - 1)) // to * to
-    w.DefineProp '__align', {value: alignment}
+    w.DefineProp 'Align', {value: alignment}
     wp.DefineProp 'Size', {value: align(offset, alignment)}
     if destructors.Length {
         struct_delete(destructors, this) {
-            if this.HasProp('__outer') ; Lifetime managed by outer RtStruct.
+            if this.HasProp('_outer_') ; Lifetime managed by outer RtStruct.
                 return
             for d in destructors
                 d(this)
             ; FIXME: call all destructors in the event of any one throwing
         }
+        struct_copy(readwriters, this, ptr) {
+            for reader, writer in readwriters
+                writer(ptr, reader(this))
+        }
+        wp.DefineProp 'CopyToPtr', {call: struct_copy.Bind(readwriters)}
         wp.DefineProp '__delete', {call: struct_delete.Bind(destructors)}
     }
-    make_primitive_dtor(offset, bt, del) => (
-        struct => del(NumGet(struct, offset, bt))
-    )
-    make_enum_prop(cls, offset) {
-        local bt := cls.__basicType.T
-        return {
-            get: (outer) => cls(NumGet(outer, offset, bt)),
-            set: (outer, value) => NumPut(bt, cls.Parse(value), outer, offset)
-        }
-    }
     return w
+}
+
+_rt_stringPointerArray(strings) {
+    chars := 0
+    for s in strings
+        chars += StrLen(s) + 1
+    b := Buffer((strings.Length * A_PtrSize) + (chars * 2))
+    p := b.ptr + strings.Length * A_PtrSize
+    for s in strings {
+        NumPut('ptr', p, b, (A_Index - 1) * A_PtrSize)
+        p += StrPut(s, p)
+    }
+    return b
 }
 
 _rt_GetParameterizedIID(name, types) {
@@ -574,16 +549,23 @@ _rt_GetParameterizedIID(name, types) {
     static pvt := NumPut("ptr", CallbackCreate(_rt_MetaDataLocate, "F"), vt) - A_PtrSize
     ; Make an array of pointers to the names.  StrPtr(names[1]) would return
     ; the address of a temporary string, so make more direct copies.
-    namePtrArr := Buffer(A_PtrSize * (1 + types.Length))
-    for t in types
-        name .= "|" String(t)
-    pStr := StrPtr(name)
-    Loop Parse name, "|" {
-        NumPut("ptr", pStr, namePtrArr, A_PtrSize * (A_Index-1))
-        pStr := NumPut("ushort", 0, pStr += 2 * StrLen(A_LoopField))
+    names := [name]
+    makeNames(types)
+    makeNames(types) {
+        for t in types {
+            if t.HasProp('typeArgs') && t.typeArgs {
+                ; Need the individual names of base type and each type arg.
+                names.Push(t.m.GetTypeDefProps(t.t))
+                makeNames(t.typeArgs)
+            }
+            else {
+                names.Push(String(t))
+            }
+        }
     }
-    DllCall("combase.dll\RoGetParameterizedTypeInstanceIID"
-        , "uint", namePtrArr.Size//A_PtrSize, "ptr", namePtrArr
+    namePtrArr := _rt_stringPointerArray(names)
+    hr := DllCall("combase.dll\RoGetParameterizedTypeInstanceIID"
+        , "uint", names.Length, "ptr", namePtrArr
         , "ptr*", pvt  ; "*" turns it into an "object" on DllCall's stack.
         , "ptr", oiid := GUID(), "ptr*", &pextra:=0, "hresult")
     DllCall("combase.dll\RoFreeParameterizedTypeExtra"
@@ -596,7 +578,8 @@ _rt_MetaDataLocate(this, pname, mdb) {
     ; mdb : IRoSimpleMetaDataBuilder -- unconventional interface with no base type
     try {
         t := WinRT.GetType(name)
-        if t.IsInterface { ; tdInterface
+        switch String(t.FundamentalType) {
+        case "Interface":
             if !(pguid := t.GUID)
                 throw Error("GUID not found for " name)
             if p := InStr(name, "``") {
@@ -607,11 +590,33 @@ _rt_MetaDataLocate(this, pname, mdb) {
                 ; SetWinRtInterface
                 ComCall(0, mdb, "ptr", pguid)
             }
-        }
-        else {
-            t := WinRT.GetType(name).DefaultInterface
+        case "Object":
+            t := WinRT.GetType(name).Class.__DefaultInterface
             ; SetRuntimeClassSimpleDefault
             ComCall(4, mdb, "ptr", pname, "wstr", t.Name, "ptr", t.GUID)
+        case "Delegate":
+            if !(pguid := t.GUID)
+                throw Error("GUID not found for " name)
+            if p := InStr(name, "``") {
+                ; SetParameterizedDelete
+                ComCall(9, mdb, "ptr", pguid, "uint", SubStr(name, p + 1))
+            }
+            else {
+                ; SetDelegate
+                ComCall(1, mdb, "ptr", pguid)
+            }
+        case "Struct":
+            names := []
+            for field in t.Fields()
+                names.Push(String(field.type))
+            namePtrArr := _rt_stringPointerArray(names)
+            ; SetStruct
+            ComCall(6, mdb, "ptr", pname, "uint", names.Length, "ptr", namePtrArr)
+        case "Enum":
+            ; SetEnum
+            ComCall(7, mdb, "ptr", pname, "wstr", t.Class.__basicType.Name)
+        default:
+            throw Error('Unsupported fundamental type')
         }
     }
     catch as e {
