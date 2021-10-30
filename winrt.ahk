@@ -408,10 +408,11 @@ class WinRT {
             }
             if p != StrLen(name) + 1
                 throw Error("Parse error or bad name.", -1, SubStr(name, p) || name)
+            ; FIXME: cache generic instance
             return {
                 typeArgs: typeArgs,
-                GUID: _rt_GetParameterizedIID(baseName, typeArgs),
-                base: baseType
+                m: baseType.m, t: baseType.t,
+                base: baseType.base
             }
         }
         return this._CacheGetType(name)

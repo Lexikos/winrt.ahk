@@ -77,7 +77,7 @@ class RtTypeInfo extends RtMetaDataItem {
     
     GUID => _rt_memoize(this, 'GUID')
     _init_GUID() => this.typeArgs
-        ? _rt_GetParameterizedIID(this.base.Name, this.typeArgs)
+        ? _rt_GetParameterizedIID(this.m.GetTypeDefProps(this.t), this.typeArgs)
         : this.m.GetGuidPtr(this.t)
     
     ; Whether this class type supports direct activation (IActivationFactory).
@@ -307,7 +307,14 @@ _rt_DecodeSigGenericInst(m, &p, p2, typeArgs:=false) {
     }
     if p > p2
         throw Error("Signature decoding error")
-    return {typeArgs: types, base: baseType}
+    ; FIXME: cache generic instance
+    return {
+        typeArgs: types,
+        m: baseType.m, t: baseType.t,
+        base: baseType.base
+        ; base: baseType -- not doing this because most of the cached properties
+        ; need to be recalculated for the generic instance, GUID in particular.
+    }
 }
 
 _rt_DecodeSigType(m, &p, p2, typeArgs:=false) {
