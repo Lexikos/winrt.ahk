@@ -54,7 +54,7 @@ class RtRootTypes extends FFITypes {
             }],
             ['String', {
                 ArgPassInfo: ArgPassInfo("ptr", HStringFromString, HStringRet),
-                ReadWriteInfo: RtStringReadWriteInfo(),
+                ReadWriteInfo: ReadWriteInfo.FromClass(HString),
             }],
             ['Struct', {
                 TypeClass: RtTypeInfo.Struct,
@@ -146,37 +146,34 @@ class ReadWriteInfo {
     class FromClass extends ReadWriteInfo {
         __new(cls) {
             this.Class := cls
-            this.Size := cls.Prototype.Size
-            this.Align := cls.Align
+            this.Size := cls.HasProp('Size') ? cls.Size : cls.Prototype.Size
+            cls.HasProp('Align') && this.Align := cls.Align
         }
         
         GetReader(offset:=0) => this.Class.FromOffset.Bind(this.Class, , offset)
         
         GetWriter(offset:=0) {
             cls := this.Class
-            struct_writer(ptr, value) {
-                if !(value is cls)
+            ; FIXME: implement struct coercion
+            copyToPtr := (checkType := !cls.HasProp('CopyToPtr'))
+                ? cls.Prototype.CopyToPtr  ; do not use an overridden method if subclassed
+                : cls.CopyToPtr.Bind(cls)
+            struct_writer(buf, value) {
+                if checkType && !(value is cls)
                     throw TypeError('Expected ' cls.Prototype.__class ' but got ' Type(value) '.', -1)
-                value.CopyToPtr((ptr is Integer ? ptr : ptr.ptr) + offset)
+                copyToPtr(value, buf.ptr + offset)
             }
             return struct_writer
         }
     
         GetDeleter(offset:=0) {
             cls := this.Class
-            if !cls.Prototype.HasProp('__delete')
+            if !cls.Prototype.HasMethod('__delete')
                 return false
-            return struct_delete_at_offset(ptr) =>
-                cls.FromOffset(ptr, offset).__delete()
+            del := cls.Prototype.__delete
+            return struct_delete_at_offset(buf) => del({ptr: buf.ptr + offset})
         }
     }
-}
-
-class RtStringReadWriteInfo extends ReadWriteInfo {
-    Size := A_PtrSize
-    GetReader(offset:=0) => (ptr) => WindowsGetString(NumGet(ptr, offset, "ptr"))
-    GetWriter(offset:=0) => (ptr, value) => NumPut("ptr", WindowsCreateString(value), ptr, offset)
-    GetDeleter(offset:=0) => (ptr) => WindowsDeleteString(NumGet(ptr, offset, "ptr"))
 }
 
 class RtInterfaceArgPassInfo extends ArgPassInfo {

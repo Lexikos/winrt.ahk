@@ -4,11 +4,18 @@ class HString {
 	static __new() {
         this.Prototype.DefineProp 'ToString', {call: WindowsGetString}
         this.Prototype.DefineProp '__delete', {call: WindowsDeleteString}
+        this.Size := A_PtrSize
+    }
+    static FromOffset(buf, offset) {
+        return WindowsGetString(NumGet(buf, offset, 'ptr'))
+    }
+    static CopyToPtr(value, ptr) {
+        NumPut('ptr', WindowsCreateString(String(value)), ptr)
     }
 }
 
 ; Create HString for passing to ComCall/DllCall.  Has automatic cleanup.
-HStringFromString(str) => HString(WindowsCreateString(str))
+HStringFromString(str) => HString(WindowsCreateString(String(str)))
 
 ; Delete a HString and return the equivalent string value.
 HStringRet(hstr) { ; => String(HString(hstr))
