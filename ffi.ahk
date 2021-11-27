@@ -170,8 +170,14 @@ class ReadWriteInfo {
             cls := this.Class
             if !cls.Prototype.HasMethod('__delete')
                 return false
-            del := cls.Prototype.__delete
-            return struct_delete_at_offset(buf) => del({ptr: buf.ptr + offset})
+            ; del := cls.Prototype.__delete
+            ; return struct_delete_at_offset(buf) => del({ptr: buf.ptr + offset})
+            proto := cls.Prototype
+            ; FIXME: assumes all types other than ValueType are pointer types
+            if HasBase(proto, ValueType.Prototype)
+                return struct_delete_at_offset(buf) => ({ptr: buf.ptr + offset, base: proto}, "")
+            else
+                return ptr_delete_at_offset(buf) => ({ptr: NumGet(buf.ptr, offset, 'ptr'), base: proto}, "")
         }
     }
 }
