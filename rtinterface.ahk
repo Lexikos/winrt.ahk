@@ -241,14 +241,20 @@ _rt_DecodeSigGenericInst(m, &p, p2, typeArgs:=false) {
     }
     if p > p2
         throw Error("Signature decoding error")
-    ; FIXME: cache generic instance
-    return {
+    t := {
         typeArgs: types,
         m: baseType.m, t: baseType.t,
         base: baseType.base
         ; base: baseType -- not doing this because most of the cached properties
         ; need to be recalculated for the generic instance, GUID in particular.
     }
+    ; Check/update cache to ensure there's only one typeinfo for this combination of
+    ; types (to reduce memory usage and permit other optimizations).  This could be
+    ; optimized by decoding sig to names only, rather than resolving to the array
+    ; of types (above).
+    if cached := WinRT.TypeCache.Get(tname := t.Name, false)
+        return cached
+    return WinRT.TypeCache[tname] := t
 }
 
 _rt_DecodeSigType(m, &p, p2, typeArgs:=false) {

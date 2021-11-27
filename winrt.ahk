@@ -1,4 +1,4 @@
-﻿
+
 #include overload.ahk
 #include guid.ahk
 #include hstring.ahk
@@ -79,15 +79,8 @@ class WinRT {
     }
     
     static _CacheGetType(name) {
-        static cache := this.TypeCache
-        ; Cache typeinfo by full name.
-        return cache.get(name, false)
-            || cache[name] := this._CacheGetTypeNS(name)
-    }
-    
-    static GetType(name) {
         if p := InStr(name, "<") {
-            baseType := this._CacheGetType(baseName := SubStr(name, 1, p-1))
+            baseType := this.GetType(baseName := SubStr(name, 1, p-1))
             typeArgs := []
             while RegExMatch(name, "\G([^<>,]++(?:<(?:(?1)(?:,|(?=>)))++>)?)(?=[,>])", &m, ++p) {
                 typeArgs.Push(this.GetType(m.0))
@@ -95,14 +88,20 @@ class WinRT {
             }
             if p != StrLen(name) + 1
                 throw Error("Parse error or bad name.", -1, SubStr(name, p) || name)
-            ; FIXME: cache generic instance
             return {
                 typeArgs: typeArgs,
                 m: baseType.m, t: baseType.t,
                 base: baseType.base
             }
         }
-        return this._CacheGetType(name)
+        return this._CacheGetTypeNS(name)
+    }
+    
+    static GetType(name) {
+        static cache := this.TypeCache
+        ; Cache typeinfo by full name.
+        return cache.get(name, false)
+            || cache[name] := this._CacheGetType(name)
     }
 }
 
