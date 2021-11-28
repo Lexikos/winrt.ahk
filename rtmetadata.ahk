@@ -45,25 +45,25 @@ class MetaDataModule {
     }
     
     CreateInterfaceWrapper(t) {
-        w := _rt_CreateClass(t.Name, RtObject)
+        w := _rt_CreateClass(t_name := t.Name, RtObject)
         t.DefineProp 'Class', {value: w}
         this.AddInterfaceToWrapper(w.prototype, t, true)
+        wrapped := Map()
         addreq(w.prototype, t)
         addreq(w, t) {
-            for impl in t.Implements() {
-                impl.m.AddInterfaceToWrapper(w, impl, false)
-                addreq(w, impl)
+            for ti in t.Implements() {
+                if wrapped.Has(ti_name := ti.Name)
+                    continue
+                wrapped[ti_name] := true
+                ti.m.AddInterfaceToWrapper(w, ti, false)
+                addreq(w, ti)
             }
         }
         return w
     }
     
     CreateClassWrapper(t) {
-        if (baseclass := t.SuperType).HasProp('Class')
-            baseclass := baseclass.Class
-        else
-            throw Error("This type is not a class",, String(baseclass))
-        w := _rt_CreateClass(classname := t.Name, baseclass)
+        w := _rt_CreateClass(classname := t.Name, t.SuperType.Class)
         t.DefineProp 'Class', {value: w}
         ; Add any constructors:
         this.AddFactoriesToWrapper(w, t)
@@ -115,10 +115,9 @@ class MetaDataModule {
         namebuf := Buffer(2*MAX_NAME_CCH)
         DllCall("ole32\StringFromGUID2", "ptr", pguid, "ptr", namebuf, "int", MAX_NAME_CCH)
         iid := StrGet(namebuf)
-        name_prefix := w.HasOwnProp('prototype') ? w.prototype.__class ".Prototype." : w.__class "."
+        name_prefix := w.HasOwnProp('prototype') ? w.prototype.__class "." : w.__class ".Prototype."
         for method in t.Methods() {
             name := nameoverride ? nameoverride : method.name
-            ; TODO: signature abstraction?
             types := t.MethodArgTypes(method.sig)
             wrapper := MethodWrapper(5 + A_Index, iid, types, name_prefix name)
             if method.flags & 0x400 { ; tdSpecialName
@@ -518,8 +517,12 @@ _rt_CreateStructWrapper(t) {
             if this.HasProp('_outer_') ; Lifetime managed by outer RtStruct.
                 return
             for d in destructors
-                d(this)
-            ; FIXME: call all destructors in the event of any one throwing
+                try
+                    d(this)
+                catch as e ; Ensure all destructors are called ...
+                    thrown := e
+            if IsSet(thrown)
+                throw thrown ; ... and the last error is reported.
         }
         struct_copy(readwriters, this, ptr) {
             for reader, writer in readwriters

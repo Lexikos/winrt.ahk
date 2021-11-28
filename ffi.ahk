@@ -28,7 +28,7 @@ class RtRootTypes extends FFITypes {
     static __new() {
         t := [
             ['Boolean', {
-                ArgPassInfo: ArgPassInfo("char", v => !!v, false),
+                ArgPassInfo: ArgPassInfo("char", v => !!v, Number),
             }],
             ['Char16', {
                 ArgPassInfo: ArgPassInfo("ushort", Ord, Chr),
@@ -154,7 +154,7 @@ class ReadWriteInfo {
         
         GetWriter(offset:=0) {
             cls := this.Class
-            ; FIXME: implement struct coercion
+            ; TODO: implement struct coercion
             copyToPtr := (checkType := !cls.HasProp('CopyToPtr'))
                 ? cls.Prototype.CopyToPtr  ; do not use an overridden method if subclassed
                 : cls.CopyToPtr.Bind(cls)
@@ -243,6 +243,6 @@ class RtDelegateArgPassInfo extends ArgPassInfo {
         }
         else
             factory := typeinfo.Factory
-        super.__new("ptr", factory, false)  ; TODO: delegate NativeToScript
+        super.__new("ptr", factory, false)  ; TODO: delegate NativeToScript (e.g. for IAsyncOperation.Completed return value)
     }
 }

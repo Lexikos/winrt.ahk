@@ -18,8 +18,9 @@ class RtTypeInfo {
                 basetype := this.m.GetTypeByToken(tbase)
                 if basetype is RtTypeInfo
                     this.base := basetype.base
-                else
+                else if basetype.hasProp('TypeClass')
                     this.base := basetype.TypeClass.Prototype
+                ;else: could be Attribute, maybe others.
                 this.SuperType := basetype
         }
     }
@@ -114,7 +115,8 @@ class RtTypeInfo {
             m := {
                 name: StrGet(namebuf, namelen, "UTF-16"),
                 flags: attr, ; CorMethodAttr
-                sig: {ptr: psig, size: nsig}
+                sig: {ptr: psig, size: nsig},
+                t: m
             }
         }
         return _rt_Enumerator_f(resolve_method, 18, this.m, "uint", this.t)
@@ -125,6 +127,27 @@ class RtTypeInfo {
         if (NumGet(sig, 0, "uchar") & 0x0f) > 5
             throw ValueError("Invalid method signature", -1)
         return _rt_DecodeSig(this.m, sig.ptr, sig.size, this.typeArgs)
+    }
+    
+    MethodArgProps(method) {
+        args := []
+        ; GetParamForMethodIndex
+        ComCall(52, this.m, "uint", method.t, "uint", 1, "uint*", &pd:=0)
+        namebuf := Buffer(2*MAX_NAME_CCH)
+        loop NumGet(method.sig, 1, "uchar") { ; Get arg count from signature.
+            ; GetParamProps
+            ComCall(59, this.m, "uint", pd + A_Index - 1
+                , "ptr*", &md:=0, "uint*", &index:=0
+                , "ptr", namebuf, "uint", namebuf.size//2, "uint*", &namelen:=0
+                , "uint*", &attr:=0, "ptr", 0, "ptr", 0, "ptr", 0)
+            if md != method.t || index != A_Index
+                throw Error('Unexpected ParamDef sequence in metadata') 
+            args.Push {
+                flags: attr,
+                name: StrGet(namebuf, namelen, "UTF-16"),
+            }
+        }
+        return args
     }
     
     Implements() {
@@ -160,27 +183,61 @@ class RtTypeMod extends RtDecodedType {
 }
 
 class RtPtrType extends RtTypeMod {
-    ArgPassInfo => ArgPassInfo('Unsupported', false, false)
+    ArgPassInfo => ArgPassInfo.Unsupported
     ToString() => String(this.inner) "*"
+}
+
+class RefObjPtrAdapter {
+    __new(stn, nts, r) {
+        this.r := r
+        this.stn := stn
+        this.nts := nts
+    }
+    ptr {
+        get {
+            if !IsSetRef(this.r)
+                return 0
+            v := this.stn ? (this.stn)(%this.r%) : %this.r%
+            ; v is stored in this.v to keep it alive until after ComCall's caller releases the parameters (including 'this').
+            return v is Integer ? v : (this.v := v).Ptr
+        }
+        set => %this.r% := (this.nts)(value)
+    }
 }
 
 class RtRefType extends RtTypeMod {
     ; TODO: check in/out-ness instead of IsSet
     __new(inner) {
         super.__new(inner)
-        if inner.ArgPassInfo {
-            this.ArgPassInfo := ArgPassInfo(
-                inner.ArgPassInfo.NativeType '*',
-                refType_ScriptToNative(&v) => isSet(v) ? &v : &v := 0,
-                false
-            )
+        if api := inner.ArgPassInfo {
+            numberRef_ScriptToNative(&v) => isSet(v) ? &v : &v := 0
+            refPtrType_ScriptToNative(a, v) => a(v)
+            canTreatAsPtr(nt) {
+                return nt != 'float' && nt != 'double' && (A_PtrSize = 8 || !InStr(nt, '64'))
+            }
+            if api.NativeToScript && canTreatAsPtr(api.NativeType) {
+                this.ArgPassInfo := ArgPassInfo(
+                    'Ptr*',
+                    refPtrType_ScriptToNative.Bind(ObjBindMethod(RefObjPtrAdapter,, api.ScriptToNative, api.NativeToScript)),
+                    false
+                )
+                return
+            }
+            else if !(api.ScriptToNative || api.NativeToScript) {
+                this.ArgPassInfo := ArgPassInfo(
+                    api.NativeType '*',
+                    numberRef_ScriptToNative,
+                    false
+                )
+                return
+            }
+            MsgBox 'DEBUG: RtRefType being constructed for type "' String(inner) '", with unsupported ArgPassInfo properties'
         }
-        else {
-            if !(inner is RtTypeInfo.Struct)
-                MsgBox 'DEBUG: RtRefType being constructed for type "' String(inner) '", which has no ArgPassInfo'
-            ; TODO: perform type checking in ScriptToNative
-            this.ArgPassInfo := FFITypes.IntPtr.ArgPassInfo
+        else if !(inner is RtTypeInfo.Struct) && inner != RtRootTypes.Guid {
+            MsgBox 'DEBUG: RtRefType being constructed for type "' String(inner) '", which has no ArgPassInfo'
         }
+        ; TODO: perform type checking in ScriptToNative
+        this.ArgPassInfo := FFITypes.IntPtr.ArgPassInfo
     }
     ScriptToNative => (&v) => isSet(v) ? &v : &v := 0
     NativeType => this.inner.NativeType '*'
@@ -279,9 +336,12 @@ _rt_DecodeSigType(m, &p, p2, typeArgs:=false) {
         case 0x15: ; GENERICINST <generic type> <argCnt> <arg1> ... <argn>
             return _rt_DecodeSigGenericInst(m, &p, p2, typeArgs)
         case 0x1F, 0x20: ; CMOD <typeDef/Ref> ...
-            modt := m.GetTypeRefProps(CorSigUncompressToken(&p))
-            D '! unhandled modifier ' modt
-            return _rt_DecodeSigType(m, &p, p2, typeArgs)
+            modt := CorSigUncompressToken(&p) ; Must be called to advance the pointer.
+            ; modt := m.GetTypeRefProps(modt)
+            t := _rt_DecodeSigType(m, &p, p2, typeArgs)
+            ; So far I've only observed modt='System.Runtime.CompilerServices.IsConst'
+            ; D '! unhandled modifier ' modt ' on type ' String(t)
+            return t
     }
     throw Error("type not handled",, Format("{:02x}", b))
 }
