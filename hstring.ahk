@@ -10,6 +10,7 @@ class HString {
         return WindowsGetString(NumGet(buf, offset, 'ptr'))
     }
     static CopyToPtr(value, ptr) {
+        WindowsDeleteString(NumGet(ptr, 'ptr'))
         NumPut('ptr', WindowsCreateString(String(value)), ptr)
     }
 }
