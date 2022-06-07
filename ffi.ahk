@@ -233,12 +233,12 @@ class RtEnumArgPassInfo extends ArgPassInfo {
 class RtDelegateArgPassInfo extends ArgPassInfo {
     __new(typeinfo) {
         if !typeinfo.HasProp('Factory') {
-            for method in typeinfo.Methods() {
-                if method.flags != 0x08C6
-                    continue
-                types := typeinfo.MethodArgTypes(method.sig)
-                factory := DelegateFactory(typeinfo.GUID, types, types.RemoveAt(1))
-            }
+            methods := [typeinfo.Methods()*]
+            if methods.Length != 2 || (methods[1].Name '|' methods[2].Name) != '.ctor|Invoke'
+                throw Error('Unexpected delegate typeinfo')
+            method := methods[2] ; Invoke
+            types := typeinfo.MethodArgTypes(method.sig)
+            factory := DelegateFactory(typeinfo.GUID, types, types.RemoveAt(1))
             typeinfo.DefineProp('Factory', {value: factory})
         }
         else
