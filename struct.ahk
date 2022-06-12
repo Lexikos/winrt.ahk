@@ -16,7 +16,7 @@ class ValueType extends RtAny {
 }
 
 class EnumValue extends RtAny {
-    static Call(n, p*) {
+    static Call(n) {
         if e := this.__item.get(n, 0)
             return e
         return {n: n, base: this.prototype}
