@@ -24,8 +24,8 @@ class EnumValue extends RtAny {
     static Parse(v) { ; TODO: parse space-delimited strings for flag enums
         if v is this
             return v.n
-        if v is Number
-            return this[v].n
+        if v is Integer
+            return v ; this[v].n would only permit explicitly defined values, but Parse is currently used for all enum args, so this isn't suitable for flag enums.
         if v is String
             return this.%v%.n
         throw TypeError(Format('Value of type "{}" cannot be converted to {}.', type(v), this.prototype.__class), -1)
