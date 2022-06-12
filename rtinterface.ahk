@@ -20,7 +20,7 @@ class RtTypeInfo {
                     this.base := basetype.base
                 else if basetype.hasProp('TypeClass')
                     this.base := basetype.TypeClass.Prototype
-                ;else: could be Attribute, maybe others.
+                ;else: just leave RtTypeInfo as base.
                 this.SuperType := basetype
         }
     }
@@ -49,6 +49,10 @@ class RtTypeInfo {
     
     class Delegate extends RtTypeInfo {
         ArgPassInfo => RtDelegateArgPassInfo(this)
+    }
+    
+    class Attribute extends RtTypeInfo {
+        ; Just for identification. Attributes are only used in metadata.
     }
     
     ArgPassInfo => false

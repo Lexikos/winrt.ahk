@@ -27,6 +27,9 @@ class FFITypes {
 class RtRootTypes extends FFITypes {
     static __new() {
         t := [
+            ['Attribute', {
+                TypeClass: RtTypeInfo.Attribute,
+            }],
             ['Boolean', {
                 ArgPassInfo: ArgPassInfo("char", v => !!v, Number),
             }],
