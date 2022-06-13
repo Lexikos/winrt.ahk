@@ -215,7 +215,7 @@ class RtRefType extends RtTypeMod {
         super.__new(inner)
         if api := inner.ArgPassInfo {
             numberRef_ScriptToNative(&v) => isSet(v) ? &v : &v := 0
-            refPtrType_ScriptToNative(a, v) => a(v)
+            refPtrType_ScriptToNative(a, v) => v = 0 && v is Integer ? v : a(v)
             canTreatAsPtr(nt) {
                 return nt != 'float' && nt != 'double' && (A_PtrSize = 8 || !InStr(nt, '64'))
             }
