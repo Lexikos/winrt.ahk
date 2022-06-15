@@ -34,6 +34,7 @@ class RtTypeInfo {
     class Object extends RtTypeInfo {
         Class => this.m.CreateClassWrapper(this)
         ArgPassInfo => RtObjectArgPassInfo(this)
+        ReadWriteInfo => RtInterfaceReadWriteInfo(this)
     }
     
     class Struct extends RtTypeInfo {

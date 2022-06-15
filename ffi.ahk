@@ -53,6 +53,7 @@ class RtRootTypes extends FFITypes {
             ['Object', {
                 TypeClass: RtTypeInfo.Object,
                 ArgPassInfo: RtInterfaceArgPassInfo(),
+                ReadWriteInfo: RtInterfaceReadWriteInfo(),
                 Class: RtObject,
             }],
             ['String', {
@@ -197,15 +198,31 @@ class RtInterfaceArgPassInfo extends ArgPassInfo {
     }
 }
 
-class RtInterfaceReadWriteInfo extends ReadWriteInfo.FromArgPassInfo {
-    __new(typeinfo) {
-        super.__new(RtInterfaceArgPassInfo(typeinfo))
+class RtInterfaceReadWriteInfo extends ReadWriteInfo {
+    __new(typeinfo:=false) {
+        this.typeinfo := typeinfo
+        this.Size := A_PtrSize
     }
+    
+    GetReader(offset:=0) => (ptr) => (
+        p := NumGet(ptr, offset, "ptr"),
+        ObjAddRef(p),
+        _rt_WrapInspectable(p, this.typeinfo)
+    )
+    
+    GetWriter(offset:=0) => (ptr, value) => (
+        ; TODO: type checking
+        ObjAddRef(pnew := value.ptr),
+        (pold := NumGet(ptr, offset, "ptr")) && ObjRelease(pold),
+        NumPut("ptr", pnew, ptr, offset)
+    )
     
     ; Objects aren't supposed to be allowed in structs, but the HttpProgress struct
     ; has an IReference<UInt64>, which projects to C# as System.Nullable<ulong> but
     ; really is an interface pointer.
-    GetDeleter(offset:=0) => (ptr) => ObjRelease(NumGet(ptr, offset, "ptr"))
+    GetDeleter(offset:=0) => (ptr) => (
+        (p := NumGet(ptr, offset, "ptr")) && ObjRelease(p)
+    )
 }
 
 class RtObjectArgPassInfo extends ArgPassInfo {
