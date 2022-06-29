@@ -359,7 +359,7 @@ MethodWrapper(idx, iid, types, name:=unset) {
                 ; On x64, structs <= 8 bytes need to be copied but larger structs are
                 ; passed by value.
                 ; Not sure how ARM64 does it.
-                args_to_expand[A_Index] := arg_size
+                args_to_expand[A_Index + 1] := arg_size  ; +1 to account for `this`
                 loop ceil(arg_size / A_PtrSize)
                     cca.Push( , 'ptr')
             }
