@@ -9,6 +9,7 @@ class RtTypeInfo {
         
         ; Determine the base type and corresponding RtTypeInfo subclass.
         mdm.GetTypeDefProps(token, &flags, &tbase)
+        this.IsSealed := flags & 0x100 ; tdSealed (not composable; can't be subclassed)
         switch {
             case flags & 0x20:
                 this.base := RtTypeInfo.Interface.Prototype

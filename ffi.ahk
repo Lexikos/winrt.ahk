@@ -228,9 +228,11 @@ class RtInterfaceReadWriteInfo extends ReadWriteInfo {
 class RtObjectArgPassInfo extends ArgPassInfo {
     __new(typeinfo) {
         local proto
-        ; TODO: if this is a composable type, check class at runtime to make all methods available
         super.__new("ptr",
             false, ; TODO: type checking for ScriptToNative
+            ; For composable classes, check class at runtime.
+            !typeinfo.IsSealed ? _rt_WrapInspectable.Bind(, typeinfo) :
+            ; For sealed classes, class is already known.
             rt_wrapSpecificClass(p) => p && {
                 ptr: p,
                 base: IsSet(proto) ? proto : proto := typeinfo.Class.prototype
