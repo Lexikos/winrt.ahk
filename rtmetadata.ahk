@@ -435,13 +435,16 @@ _rt_expand_struct_args(ismap, fc, args*) {
 }
 
 _rt_rethrow(fc, e) {
-    e.message .= "`n`nSource: " fc.Name
-    ; D '> STACK TRACE`n' e.stack
+    e.Stack := RegExReplace(e.Stack, 'm)^\Q' StrReplace(A_LineFile, '\E', '\E\\E\Q') '\E \(\d+\) :.*\R',, &count)
+    if count && RegExMatch(e.Stack, '^(?<File>.*) \((?<Line>\d+)\) :', &m) {
+        e.Stack := StrReplace(e.Stack, '[Func.Prototype.Call]', '[' fc.Name ']')
+        e.File := m.File, e.Line := m.Line
+    }
     throw
 }
 
 _rt_call(fc, fa, fri, frr, args*) {
-    ; try {
+    try {
         if args.Length != fc.MinParams
             throw Error(Format('Too {} parameters passed to function {}.', args.Length < fc.MinParams ? 'few' : 'many', fc.Name), -1)
         for i, f in fa
@@ -449,9 +452,9 @@ _rt_call(fc, fa, fri, frr, args*) {
         (fri) && args.Push(fri())
         fc(args*)
         return frr ? frr(args.Pop()) : fri ? args.Pop() : ""
-    ; } catch as e {
-    ;     _rt_rethrow(fc, e)
-    ; }
+    } catch OSError as e {
+        _rt_rethrow(fc, e)
+    }
 }
 
 
