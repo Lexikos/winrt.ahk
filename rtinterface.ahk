@@ -346,7 +346,7 @@ _rt_DecodeSigType(m, &p, p2, typeArgs:=false) {
             ; modt := m.GetTypeRefProps(modt)
             t := _rt_DecodeSigType(m, &p, p2, typeArgs)
             ; So far I've only observed modt='System.Runtime.CompilerServices.IsConst'
-            ; D '! unhandled modifier ' modt ' on type ' String(t)
+            ; @Debug-Breakpoint(modt !~ 'IsConst') => Unhandled modifier {modt} on type {t.__class}{t}
             return t
     }
     throw Error("type not handled",, Format("{:02x}", b))

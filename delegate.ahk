@@ -106,8 +106,7 @@ CreateComMethodCallback(name, argTypes, retType:=false) {
             (writeRet) && writeRet(NumGet(argPtr, retOffset, 'ptr'), retval)
         }
         catch Any as e {
-            D Type(e) ' thrown in method ' name (HasProp(e, 'Message') ? ': ' e.Message : '')
-            HasProp(e, 'Stack') && D(e.Stack)
+            ; @Debug-Breakpoint => {e.__Class} thrown in method {name}: {e.Message}
             return e is OSError ? e.number : 0x80004005
         }
         return 0

@@ -15,7 +15,8 @@ class MetaDataModule {
         asm := _rt_FindAssemblyRef(mdai, "mscorlib") || 1
         ; FindTypeRef
         if ComCall(55, this, "uint", asm, "wstr", "System.Object", "uint*", &tr:=0, "int") != 0 {
-            D '- System.Object not found'
+            ; System.Object not found
+            ; @Debug-Breakpoint
             return -1
         }
         return tr
@@ -109,7 +110,7 @@ class MetaDataModule {
     AddInterfaceToWrapper(w, t, isdefault:=false, nameoverride:=false) {
         pguid := t.GUID
         if !pguid {
-            D "- interface {:x} can't be added; no GUID", t.Name
+            ; @Debug-Output => Interface {t.Name} can't be added because it has no GUID
             return
         }
         namebuf := Buffer(2*MAX_NAME_CCH)
@@ -626,7 +627,8 @@ _rt_MetaDataLocate(this, pname, mdb) {
         }
     }
     catch as e {
-        D '- ' type(e) ' locating metadata for "' name '": ' e.message
+        ; @Debug-Output => {e.__class} locating metadata for {name}: {e.message}
+        ; @Debug-Breakpoint
         return 0x80004005 ; E_FAIL
     }
     return 0
