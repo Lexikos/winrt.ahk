@@ -1,3 +1,5 @@
+#include winrt.ahk
+
 class RtNamespace {
     static __new() {
         this.DefineProp '__set', {call: RtAny.__set}
