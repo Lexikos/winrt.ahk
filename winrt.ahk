@@ -9,10 +9,17 @@
 
 MAX_NAME_CCH := 1024
 
+/*
+  Core WinRT functions.
+    - WinRT(classname) creates a runtime object.
+    - WinRT(rtobj) "casts" rtobj to its most derived class.
+    - WinRT(ptr) wraps a runtime interface pointer, taking ownership of the reference.
+    - WinRT.GetType(name) returns a TypeInfo for the given type.
+*/
 class WinRT {
     static Call(p) => (
         p is String ? this.GetType(p).Class :
-        p is Object ? _rt_WrapInspectable(p.ptr) :
+        p is Object ? (ObjAddRef(p.ptr), _rt_WrapInspectable(p.ptr)) :
         _rt_WrapInspectable(p)
     )
     
