@@ -43,11 +43,3 @@ items := result.Items ; is IVectorView<ClipboardHistoryItem>
 MsgBox "There are " items.Size " items in the Clipboard History."
 ; items.Item(0) returns the first item, which is a DataPackageView,
 ; like `content` above.  That's enough for this demonstration...
-
-; There's no specific support for IAsync in winrt.ahk yet, hence this helper function.
-WaitSync(async) {
-    loop
-        Sleep 10
-    until async.Status.n ; Non-zero means Completed, Canceled or Error in this case.
-    return async.GetResults() ; Should throw if Canceled or Error.
-}

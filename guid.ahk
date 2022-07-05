@@ -1,13 +1,15 @@
 class GUID {
     __new(sguid:=unset) {
-        this.Ptr := DllCall("msvcrt\malloc", "ptr", 16, "ptr")
-        if IsSet(sguid)
-            DllCall("ole32.dll\IIDFromString", "wstr", sguid, "ptr", this, "hresult")
-        else
+        this.Ptr := DllCall("msvcrt\malloc", "ptr", 16, "cdecl ptr")
+        if !IsSet(sguid)
             NumPut("int64", 0, "int64", 0, this)
+        else if IsInteger(sguid)
+            DllCall("msvcrt\memcpy", "ptr", this, "ptr", sguid, "ptr", 16, "cdecl")
+        else
+            DllCall("ole32.dll\IIDFromString", "wstr", sguid, "ptr", this, "hresult")
     }
     
-    __delete() => DllCall("msvcrt\free", "ptr", this)
+    __delete() => DllCall("msvcrt\free", "ptr", this, "cdecl")
     
     static __new() {
         this.Prototype.DefineProp 'ToString', {call: GuidToString}

@@ -552,8 +552,8 @@ _rt_stringPointerArray(strings) {
 }
 
 _rt_GetParameterizedIID(name, types) {
-    static vt := Buffer(A_PtrSize)
-    static pvt := NumPut("ptr", CallbackCreate(_rt_MetaDataLocate, "F"), vt) - A_PtrSize
+    static vt := Buffer(A_PtrSize), p_rt_MetaDataLocate := CallbackRevoker(_rt_MetaDataLocate, "F")
+    static pvt := NumPut("ptr", p_rt_MetaDataLocate.ptr, vt) - A_PtrSize
     ; Make an array of pointers to the names.  StrPtr(names[1]) would return
     ; the address of a temporary string, so make more direct copies.
     names := [name]

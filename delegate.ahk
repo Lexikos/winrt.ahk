@@ -34,13 +34,14 @@ GetReadersForArgTypes(argTypes) {
 
 class DelegateFactory {
     __new(iid, argTypes, retType:=false) {
-        cb := CreateComMethodCallback('Call', argTypes, retType)
-        this.mtbl := CreateComMethodTable([cb], iid)
+        this.cb := cb := CreateComMethodCallback('Call', argTypes, retType)
+        this.mtbl := CreateComMethodTable([cb.ptr], iid)
+        this.pmtbl := this.mtbl.ptr + 16
     }
     Call(fn) {
-        delegate := DllCall("msvcrt\malloc", "ptr", A_PtrSize * 3, "ptr")
+        delegate := DllCall("msvcrt\malloc", "ptr", A_PtrSize * 3, "cdecl ptr")
         NumPut(
-            "ptr", this.mtbl.ptr,       ; method table
+            "ptr", this.pmtbl,       ; method table
             "ptr", 1,                   ; ref count
             "ptr", ObjPtrAddRef(fn),    ; target function
             delegate)
@@ -60,13 +61,13 @@ CreateComMethodTable(callbacks, iid) {
         if !refCount {
             local obj
             ObjRelease(obj := NumGet(this, A_PtrSize * 2, "ptr"))
-            DllCall("msvcrt\free", "ptr", this)
+            DllCall("msvcrt\free", "ptr", this, "cdecl")
         }
         return refCount
     }
-    iid := String(iid)
     iunknown_queryInterface(this, riid, ppvObject) {
         riid := GuidToString(riid)
+        iid := GuidToString(NumGet(this, "ptr") - 16)
         switch riid {
         case iid, "{00000000-0000-0000-C000-000000000046}":
             iunknown_addRef(this)
@@ -77,16 +78,15 @@ CreateComMethodTable(callbacks, iid) {
         return 0x80004002
     }
     
-    static p_addRef := CallbackCreate(iunknown_addRef, "F", 1)
-    static p_release := CallbackCreate(iunknown_release, "F", 1)
-    ; FIXME: for general use, free p_query when mtbl is freed (which never happens for WinRT)
-    p_query := CallbackCreate(iunknown_queryInterface, "F", 3)
-    
-    mtbl := Buffer((3 + callbacks.Length) * A_PtrSize)
-    NumPut("ptr", p_query, "ptr", p_addRef, "ptr", p_release, mtbl)
-    for callback in callbacks {
-        NumPut("ptr", callback, mtbl, (2 + A_Index) * A_PtrSize)
-    }
+    static p_addRef := CallbackRevoker(iunknown_addRef, "F", 1)
+    static p_release := CallbackRevoker(iunknown_release, "F", 1)
+    static p_query := CallbackRevoker(iunknown_queryInterface, "F", 3)
+    ; IID + com methods
+    mtbl := Buffer(16 + (3 + callbacks.Length) * A_PtrSize)
+    DllCall("ole32.dll\IIDFromString", "wstr", String(iid), "ptr", mtbl, "hresult")
+    p := NumPut("ptr", p_query.ptr, "ptr", p_addRef.ptr, "ptr", p_release.ptr, mtbl, 16)
+    for callback in callbacks
+        p := NumPut("ptr", callback, p)
     return mtbl
 }
 
@@ -111,5 +111,10 @@ CreateComMethodCallback(name, argTypes, retType:=false) {
         }
         return 0
     }
-    return CallbackCreate(interface_method, "&", retOffset // A_PtrSize + (retType ? 2 : 1))
+    return CallbackRevoker(interface_method, "&", retOffset // A_PtrSize + (retType ? 2 : 1))
+}
+
+class CallbackRevoker {
+    __New(pfunc, opts?, paramcount?) => this.ptr := CallbackCreate(pfunc, opts?, paramcount?)
+    __Delete() => CallbackFree(this.ptr)
 }

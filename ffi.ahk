@@ -249,7 +249,7 @@ class RtEnumArgPassInfo extends ArgPassInfo {
             cls.Parse.Bind(cls),
             cls
         )
-    }   
+    }
 }
 
 class RtDelegateArgPassInfo extends ArgPassInfo {

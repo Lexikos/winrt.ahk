@@ -75,7 +75,7 @@ class RtTypeInfo {
     GUID => _rt_memoize(this, 'GUID')
     _init_GUID() => this.typeArgs
         ? _rt_GetParameterizedIID(this.m.GetTypeDefProps(this.t), this.typeArgs)
-        : this.m.GetGuidPtr(this.t)
+        : Guid(this.m.GetGuidPtr(this.t))
     
     ; Whether this class type supports direct activation (IActivationFactory).
     HasIActivationFactory => _rt_Enumerator(53, this.m, "uint", this.t, "uint", this.m.ActivatableAttr)(&_)

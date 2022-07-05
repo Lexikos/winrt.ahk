@@ -166,3 +166,11 @@ _rt_memoize(this, propname, f := unset) {
     this.DefineProp propname, {value: value}
     return value
 }
+
+; There's no specific support for IAsync in winrt.ahk yet, hence this helper function.
+WaitSync(async) {
+    loop
+        Sleep 10
+    until async.Status.n ; Non-zero means Completed, Canceled or Error in this case.
+    return async.GetResults() ; Should throw if Canceled or Error.
+}
