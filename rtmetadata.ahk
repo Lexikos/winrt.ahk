@@ -46,7 +46,8 @@ class MetaDataModule {
     }
     
     CreateInterfaceWrapper(t) {
-        w := _rt_CreateClass(t_name := t.Name, RtObject)
+        w := _rt_CreateClass(t_name := t.Name, InStr(t_name, "Windows.Foundation.IAsync") = 1
+            ? IAsyncInfo : RtObject)
         t.DefineProp 'Class', {value: w}
         this.AddInterfaceToWrapper(w.prototype, t, true)
         wrapped := Map()
@@ -480,6 +481,15 @@ class RtObject extends RtAny {
     }
     __delete() {
         (this.ptr) && ObjRelease(this.ptr)
+    }
+}
+
+class IAsyncInfo extends RtObject {
+    await() {
+        loop
+            Sleep 10
+        until this.Status.n ; Non-zero means Completed, Canceled or Error in this case.
+        return this.GetResults() ; Should throw if Canceled or Error.
     }
 }
 
