@@ -17,7 +17,7 @@ MsgBox message
 
 ; If there's HTML on the clipboard, show its text and source URL.
 if content.Contains('HTML Format') {
-    fragment := WaitSync(content.GetHtmlFormatAsync())
+    fragment := content.GetHtmlFormatAsync().await()
     if RegExMatch(fragment, 'm)^SourceURL:(.*)\R\K(?s:.*)', &match) {
         ; Exercise for the reader: convert it to bbcode for pasting on the forum. :)
         MsgBox WinRT('Windows.Data.Html.HtmlUtilities').ConvertToText(match.0)
@@ -33,7 +33,7 @@ if !Clipboard.IsHistoryEnabled() {
     ExitApp
 }
 
-result := WaitSync(Clipboard.GetHistoryItemsAsync())
+result := Clipboard.GetHistoryItemsAsync().await()
 if result.Status.n {
     MsgBox "GetHistoryItemsAsync failed: " String(items.Status)
     ExitApp

@@ -46,8 +46,13 @@ class MetaDataModule {
     }
     
     CreateInterfaceWrapper(t) {
-        w := _rt_CreateClass(t_name := t.Name, InStr(t_name, "Windows.Foundation.IAsync") = 1
-            ? IAsyncInfo : RtObject)
+        t_name := t.Name, base := RtObject
+        switch 1 {
+            case InStr(t_name, "Windows.Foundation.IAsync"): base := IAsyncInfo
+            case InStr(t_name, "Windows.Foundation.Collections.IVector"): base := IVector
+            case InStr(t_name, "Windows.Foundation.Collections.IIterator``"): base := IIterator
+        }
+        w := _rt_CreateClass(t_name, base)
         t.DefineProp 'Class', {value: w}
         this.AddInterfaceToWrapper(w.prototype, t, true)
         wrapped := Map()
@@ -493,6 +498,22 @@ class IAsyncInfo extends RtObject {
     }
 }
 
+class IVector extends RtObject {
+    __Item[index] {
+        get => this.GetAt(index - 1)
+        set => this.SetAt(index - 1, Value)
+    }
+    Length => this.Size
+    __Enum(n) {
+        l := this.Size, i := 0
+        return (&v, *) => i < l ? (v := this.GetAt(i++), true) : false
+    }
+}
+
+class IIterator extends RtObject {
+    __Enum(n) => (&v, *) => this.HasCurrent ? (v := this.Current, this.MoveNext(), true) : false
+}
+
 _rt_CreateClass(classname, baseclass) {
     w := Class()
     w.base := baseclass
@@ -601,26 +622,26 @@ _rt_MetaDataLocate(this, pname, mdb) {
                 throw Error("GUID not found for " name)
             if p := InStr(name, "``") {
                 ; SetParameterizedInterface
-                ComCall(8, mdb, "ptr", pguid, "uint", SubStr(name, p + 1))
+                ComCall(8, mdb, "ptr", pguid, "uint", SubStr(name, p + 1), "cdecl")
             }
             else {
                 ; SetWinRtInterface
-                ComCall(0, mdb, "ptr", pguid)
+                ComCall(0, mdb, "ptr", pguid, "cdecl")
             }
         case "Object":
             t := WinRT.GetType(name).Class.__DefaultInterface
             ; SetRuntimeClassSimpleDefault
-            ComCall(4, mdb, "ptr", pname, "wstr", t.Name, "ptr", t.GUID)
+            ComCall(4, mdb, "ptr", pname, "wstr", t.Name, "ptr", t.GUID, "cdecl")
         case "Delegate":
             if !(pguid := t.GUID)
                 throw Error("GUID not found for " name)
             if p := InStr(name, "``") {
                 ; SetParameterizedDelete
-                ComCall(9, mdb, "ptr", pguid, "uint", SubStr(name, p + 1))
+                ComCall(9, mdb, "ptr", pguid, "uint", SubStr(name, p + 1), "cdecl")
             }
             else {
                 ; SetDelegate
-                ComCall(1, mdb, "ptr", pguid)
+                ComCall(1, mdb, "ptr", pguid, "cdecl")
             }
         case "Struct":
             names := []
@@ -628,10 +649,10 @@ _rt_MetaDataLocate(this, pname, mdb) {
                 names.Push(String(field.type))
             namePtrArr := _rt_stringPointerArray(names)
             ; SetStruct
-            ComCall(6, mdb, "ptr", pname, "uint", names.Length, "ptr", namePtrArr)
+            ComCall(6, mdb, "ptr", pname, "uint", names.Length, "ptr", namePtrArr, "cdecl")
         case "Enum":
             ; SetEnum
-            ComCall(7, mdb, "ptr", pname, "wstr", t.Class.__basicType.Name)
+            ComCall(7, mdb, "ptr", pname, "wstr", t.Class.__basicType.Name, "cdecl")
         default:
             throw Error('Unsupported fundamental type')
         }
