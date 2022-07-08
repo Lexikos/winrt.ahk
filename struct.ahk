@@ -11,7 +11,7 @@ class ValueType extends RtAny {
         return {ptr: buf.ptr + offset, _outer_: buf, base: this.Prototype}
     }
     CopyToPtr(ptr) {
-        DllCall('msvcrt\memcpy', 'ptr', ptr, 'ptr', this, 'ptr', this.Size)
+        DllCall('msvcrt\memcpy', 'ptr', ptr, 'ptr', this, 'ptr', this.Size, 'cdecl')
     }
 }
 

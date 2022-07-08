@@ -38,7 +38,7 @@ class DelegateFactory {
         this.mtbl := CreateComMethodTable([cb], iid)
     }
     Call(fn) {
-        delegate := DllCall("msvcrt\malloc", "ptr", A_PtrSize * 3, "ptr")
+        delegate := DllCall("msvcrt\malloc", "ptr", A_PtrSize * 3, "cdecl ptr")
         NumPut(
             "ptr", this.mtbl.ptr,       ; method table
             "ptr", 1,                   ; ref count
@@ -60,7 +60,7 @@ CreateComMethodTable(callbacks, iid) {
         if !refCount {
             local obj
             ObjRelease(obj := NumGet(this, A_PtrSize * 2, "ptr"))
-            DllCall("msvcrt\free", "ptr", this)
+            DllCall("msvcrt\free", "ptr", this, "cdecl")
         }
         return refCount
     }
