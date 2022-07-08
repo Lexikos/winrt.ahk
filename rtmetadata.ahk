@@ -391,6 +391,8 @@ MethodWrapper(idx, iid, types, name:=unset) {
     }
     ; Build the core ComCall function with predetermined type parameters.
     fc := ComCall.Bind(idx, cca*)
+    if args_to_expand.Count
+        fc := _rt_get_struct_expander(args_to_expand, fc)
     ; Define internal properties for use by _rt_call.
     if IsSet(name)
         fc.DefineProp 'Name', {value: name}  ; For our use debugging; has no effect on any built-in stuff.
@@ -398,8 +400,6 @@ MethodWrapper(idx, iid, types, name:=unset) {
     fc.DefineProp 'MaxParams', pv
     ; Compose the ComCall and parameter filters into a function.
     fc := _rt_call.Bind(fc, stn, fri, frr)
-    if args_to_expand.Count
-        fc := _rt_get_struct_expander(args_to_expand, fc)
     ; Define external properties for use by OverloadedFunc and others.
     fc.DefineProp 'MinParams', pv
     fc.DefineProp 'MaxParams', pv
@@ -411,8 +411,6 @@ _rt_get_struct_expander(sizes, fc) {
     ; Map the incoming parameter index and size to outgoing parameter index and size.
     ismap := Map(), offset := 0
     for i, size in sizes {
-        if !IsSet(size)
-            continue
         ismap[i + offset] := size
         offset += Ceil(size / A_PtrSize) - 1
     }
