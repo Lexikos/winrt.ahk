@@ -591,11 +591,17 @@ _rt_MetaDataLocate(this, pname, mdb) {
                 throw Error("GUID not found for " name)
             if p := InStr(name, "``") {
                 ; SetParameterizedInterface
-                ComCall(8, mdb, "ptr", pguid, "uint", SubStr(name, p + 1))
+                if A_PtrSize = 8 ; x64
+                    ComCall(8, mdb, "ptr", pguid, "uint", SubStr(name, p + 1))
+                else
+                    ComCall(8, mdb, "int64", NumGet(pguid, "int64"), "int64", NumGet(pguid + 8, "int64"), "uint", SubStr(name, p + 1))
             }
             else {
                 ; SetWinRtInterface
-                ComCall(0, mdb, "ptr", pguid)
+                if A_PtrSize = 8 ; x64
+                    ComCall(0, mdb, "ptr", pguid)
+                else
+                    ComCall(0, mdb, "int64", NumGet(pguid, "int64"), "int64", NumGet(pguid + 8, "int64"))
             }
         case "Object":
             t := WinRT.GetType(name).Class.__DefaultInterface
@@ -606,11 +612,17 @@ _rt_MetaDataLocate(this, pname, mdb) {
                 throw Error("GUID not found for " name)
             if p := InStr(name, "``") {
                 ; SetParameterizedDelete
-                ComCall(9, mdb, "ptr", pguid, "uint", SubStr(name, p + 1))
+                if A_PtrSize = 8 ; x64
+                    ComCall(9, mdb, "ptr", pguid, "uint", SubStr(name, p + 1))
+                else
+                    ComCall(9, mdb, "int64", NumGet(pguid, "int64"), "int64", NumGet(pguid + 8, "int64"), "uint", SubStr(name, p + 1))
             }
             else {
                 ; SetDelegate
-                ComCall(1, mdb, "ptr", pguid)
+                if A_PtrSize = 8 ; x64
+                    ComCall(1, mdb, "ptr", pguid)
+                else
+                    ComCall(1, mdb, "int64", NumGet(pguid, "int64"), "int64", NumGet(pguid + 8, "int64"))
             }
         case "Struct":
             names := []
