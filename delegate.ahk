@@ -64,7 +64,7 @@ CreateComMethodTable(callbacks, iid) {
         }
         return refCount
     }
-    iid := String(iid)
+    iid := GuidToString(iid)
     iunknown_queryInterface(this, riid, ppvObject) {
         riid := GuidToString(riid)
         switch riid {
