@@ -292,19 +292,41 @@ _rt_GetFieldConstant(mdi, field) {
         , "ptr", 0, "uint*", &cRows := 0, "ptr", 0, "ptr", 0, "ptr", 0)
     
     static colType := 0, colParent := 1, colValue := 2, GetColumn := 13, GetBlob := 15
-    Loop cRows {
-        ComCall(GetColumn, mdt, "uint", tabConstant, "uint", colParent, "uint", A_Index, "uint*", &value:=0)
-        if value != field
-            continue
-        ComCall(GetColumn, mdt, "uint", tabConstant, "uint", colValue, "uint", A_Index, "uint*", &value:=0)
-        ComCall(GetBlob, mdt, "uint", value, "uint*", &ndata:=0, "ptr*", &pdata:=0)
-        ComCall(GetColumn, mdt, "uint", tabConstant, "uint", colType, "uint", A_Index, "uint*", &value:=0)
-        ; Type must be one of the basic element types (2..14) or CLASS (18) with value 0.
-        ; WinRT only uses constants for enums, always I4 (8) or U4 (9).
-        static primitives := _rt_GetElementTypeMap()
-        return primitives[value].ReadWriteInfo.GetReader()(pdata)
-        ;return {ptr: pdata, size: ndata}
+    ; Rows look to be ordered by Parent, which could be because they are allocated sequentially
+    ; as each field is defined by the compiler, but a simple test compiling C# with mixed fields
+    ; and parameter default values showed rows ordered by Parent row ID, not by definition order.
+    ; That's perfect for binary search.  Row ID excludes the upper byte, but our metadata only
+    ; includes the one type of Parent (FieldDef) anyway.
+    left := 1, right := cRows
+    ; When we're called for sequential fields, the rows we want are often sequential as well,
+    ; so try the next row after the last found row first.  Worst case, it's always wrong and
+    ; the binary search has an extra iteration which isn't 50-50 but still helps the search.
+    static last_i
+    i := (IsSet(last_i) && last_i < cRows) ? last_i + 1 : (left + right) // 2
+    while left <= right {
+        ComCall(GetColumn, mdt, "uint", tabConstant, "uint", colParent, "uint", i, "uint*", &value:=0)
+        if field > value
+            left := i + 1
+        else if field < value
+            right := i - 1
+        else
+            break
+        i := (left + right) // 2
     }
+    if left > right {
+        ; Rather than falling back to linear search in case the rows weren't ordered as expected,
+        ; assume the field parameter was invalid.  If that turns out to not be the case, we want
+        ; to know what files need the slower method (or to fix it with another optimization).
+        throw ValueError("No constant found for token.", Format("0x{:x}", field))
+    }
+    last_i := i
+    ComCall(GetColumn, mdt, "uint", tabConstant, "uint", colValue, "uint", i, "uint*", &value:=0)
+    ComCall(GetBlob, mdt, "uint", value, "uint*", &ndata:=0, "ptr*", &pdata:=0)
+    ComCall(GetColumn, mdt, "uint", tabConstant, "uint", colType, "uint", i, "uint*", &value:=0)
+    ; Type must be one of the basic element types (2..14) or CLASS (18) with value 0.
+    ; WinRT only uses constants for enums, always I4 (8) or U4 (9).
+    static primitives := _rt_GetElementTypeMap()
+    return primitives[value].ReadWriteInfo.GetReader()(pdata)
 }
 
 _rt_GetElementTypeMap() {
