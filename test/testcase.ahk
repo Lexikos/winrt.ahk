@@ -14,6 +14,7 @@ TestCase(name, fn) {
     errline(e) => e.File ;StrReplace(e.File, A_InitialWorkingDir "\") 
         . ":" e.Line " [" type(e) "]: " e.Message
         . (e.Extra != "" ? "`n`t" e.Extra : "") "`n"
+        . RegExReplace(RegExReplace(e.Stack, ".*: \[TestCase\].*\R"), "(.*) \((\d+)\) : ", "$1:$2 ")
     print(s) {
         ; Note: vscode-autohotkey-debug catches both of these, but prints them in different colours.
         try

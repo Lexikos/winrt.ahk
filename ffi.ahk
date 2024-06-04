@@ -14,6 +14,7 @@ class FFITypes {
             [4, 'Single', 'float' ],
             [8, 'Double', 'double'],
             [A_PtrSize, 'IntPtr', 'ptr'],
+            [A_PtrSize, 'UIntPtr', 'uptr'],
             ] {
             this.NumTypeSize[t[3]] := t[1]
             this.%t[2]% := NumberTypeInfo(t*)

@@ -1,26 +1,10 @@
+#include winmd.ahk
 
-class MetaDataModule {
-    ptr := 0
-    __delete() {
-        (p := this.ptr) && ObjRelease(p)
-    }
+class MetaDataModule extends mdModule {
     StaticAttr => _rt_CacheAttributeCtors(this, this, 'StaticAttr')
     FactoryAttr => _rt_CacheAttributeCtors(this, this, 'FactoryAttr')
     ActivatableAttr => _rt_CacheAttributeCtors(this, this, 'ActivatableAttr')
     ComposableAttr => _rt_CacheAttributeCtors(this, this, 'ComposableAttr')
-    
-    ObjectTypeRef => _rt_memoize(this, 'ObjectTypeRef')
-    _init_ObjectTypeRef() {
-        mdai := ComObjQuery(this, "{EE62470B-E94B-424e-9B7C-2F00C9249F93}") ; IID_IMetaDataAssemblyImport
-        asm := _rt_FindAssemblyRef(mdai, "mscorlib") || 1
-        ; FindTypeRef
-        if ComCall(55, this, "uint", asm, "wstr", "System.Object", "uint*", &tr:=0, "int") != 0 {
-            ; System.Object not found
-            ; @Debug-Breakpoint
-            return -1
-        }
-        return tr
-    }
     
     AddFactoriesToWrapper(w, t) {
         if t.HasIActivationFactory {
@@ -83,10 +67,8 @@ class MetaDataModule {
         wrapped := Map()
         addRequiredInterfaces(wp, t, isclass) {
             for ti, impl in t.Implements() {
-                ; GetCustomAttributeByName
-                isdefault := isclass && ComCall(60, this, "uint", impl
-                    , "wstr", "Windows.Foundation.Metadata.DefaultAttribute"
-                    , "ptr", 0, "ptr", 0) = 0
+                isdefault := isclass && this.GetCustomAttributeByName(impl
+                    , 'Windows.Foundation.Metadata.DefaultAttribute')
                 if isdefault {
                     ; This is currently assigned to the Class and not t so that
                     ; t.Class.__DefaultInterface will cause this code to execute
@@ -135,99 +117,19 @@ class MetaDataModule {
         }
     }
     
-    FindTypeDefByName(name) {
-        ComCall(9, this, "wstr", name, "uint", 0, "uint*", &r:=0)
-        return r
-    }
-    
-    GetTypeDefProps(td, &flags:=0, &basetd:=0) {
-        namebuf := Buffer(2*MAX_NAME_CCH)
-        ; GetTypeDefProps
-        ComCall(12, this, "uint", td
-            , "ptr", namebuf, "uint", namebuf.Size//2, "uint*", &namelen:=0
-            , "uint*", &flags:=0, "uint*", &basetd:=0)
-        ; Testing shows namelen includes a null terminator, but the docs aren't
-        ; clear, so rely on StrGet's positive-length behaviour to truncate.
-        return StrGet(namebuf, namelen, "UTF-16")
-    }
-    
-    GetTypeRefProps(r, &scope:=unset) {
-        namebuf := Buffer(2*MAX_NAME_CCH)
-        ComCall(14, this, "uint", r, "uint*", &scope:=0
-            , "ptr", namebuf, "uint", namebuf.size//2, "uint*", &namelen:=0)
-        return StrGet(namebuf, namelen, "UTF-16")
-    }
-    
     GetGuidPtr(td) {
-        ; GetCustomAttributeByName
-        if ComCall(60, this, "uint", td
-            , "wstr", "Windows.Foundation.Metadata.GuidAttribute"
-            , "ptr*", &pguid:=0, "uint*", &nguid:=0) != 0
-            return 0
+        guidattr := this.GetCustomAttributeByName(td, 'Windows.Foundation.Metadata.GuidAttribute')
         ; Attribute is serialized with leading 16-bit version (1) and trailing 16-bit number of named args (0).
-        if nguid != 20
-            throw Error("Unexpected GuidAttribute data length: " nguid)
-        return pguid + 2
+        if guidattr.size != 20
+            throw Error("Unexpected GuidAttribute data length: " guidattr.size)
+        return guidattr.ptr + 2
     }
-    
-    EnumMethods(td)                 => _rt_Enumerator(18, this, "uint", td)
-    EnumCustomAttributes(td, tctor) => _rt_Enumerator(53, this, "uint", td, "uint", tctor)
-    EnumTypeDefs()                  => _rt_Enumerator(6, this)
-    EnumInterfaceImpls(td)          => _rt_Enumerator(7, this, "uint", td)
-    
-    Name {
-        get {
-            namebuf := Buffer(2*MAX_NAME_CCH)
-            ; GetScopeProps
-            ComCall(10, this, "ptr", namebuf, "uint", namebuf.Size//2, "uint*", &namelen:=0, "ptr", 0)
-            return StrGet(namebuf, namelen, "UTF-16")
-        }
-    }
-    
-    static Open(path) {
-        static CLSID_CorMetaDataDispenser := GUID("{E5CB7A31-7512-11d2-89CE-0080C792E5D8}")
-        static IID_IMetaDataDispenser := GUID("{809C652E-7396-11D2-9771-00A0C9B4D50C}")
-        static IID_IMetaDataImport := GUID("{7DAC8207-D3AE-4C75-9B67-92801A497D44}")
-        #DllLoad rometadata.dll
-        DllCall("rometadata.dll\MetaDataGetDispenser"
-            , "ptr", CLSID_CorMetaDataDispenser, "ptr", IID_IMetaDataDispenser
-            , "ptr*", mdd := ComValue(13, 0), "hresult")
-        ; IMetaDataDispenser::OpenScope
-        ComCall(4, mdd, "wstr", path, "uint", 0
-            , "ptr", IID_IMetaDataImport
-            , "ptr*", mdm := this())
-        return mdm
-    }
-}
-
-_rt_Enumerator(args*) => _rt_Enumerator_f(false, args*)
-
-_rt_Enumerator_f(f, methodidx, this, args*) {
-    henum := index := count := 0
-    ; Getting the items in batches improves performance, with diminishing returns.
-    buf := Buffer(4 * batch_size:=32)
-    ; Prepare the args for ComCall, with the caller's extra args in the middle.
-    args.InsertAt(1, methodidx, this, "ptr*", &henum)
-    args.Push("ptr", buf, "uint", batch_size, "uint*", &count)
-    ; Call CloseEnum when finished enumerating.
-    args.__delete := args => ComCall(3, this, "uint", henum, "int")
-    next(&item) {
-        if index = count {
-            index := 0
-            if ComCall(args*) ; S_FALSE (1) means no items.
-                return false
-        }
-        item := NumGet(buf, (index++) * 4, "uint")
-        (f) && f(&item)
-        return true
-    }
-    return next
 }
 
 _rt_FindAssemblyRef(mdai, target_name) {
-    namebuf := Buffer(2*MAX_NAME_CCH)
+    namebuf := mdNameBuffer()
     ; EnumAssemblyRefs
-    for asm in _rt_Enumerator(8, mdai) {
+    for asm in mdEnumerator_f(false, 8, mdai) {
         ; GetAssemblyRefProps
         ComCall(4, mdai , "uint", asm, "ptr", 0, "ptr", 0
             , "ptr", namebuf, "uint", namebuf.Size//2, "uint*", &namelen:=0
@@ -258,7 +160,7 @@ _rt_CacheAttributeCtors(mdi, o, retprop) {
             return
         }
         ; EnumMemberRefs
-        for mr in _rt_Enumerator(23, mdi, "uint", tr) {
+        for mr in mdEnumerator_f(false, 23, mdi, "uint", tr) {
             ; GetMemberRefProps
             ComCall(31, mdi, "uint", mr, "uint*", &ttype:=0
                 , "ptr", 0, "uint", 0, "ptr", 0
@@ -282,82 +184,6 @@ _rt_CacheAttributeCtors(mdi, o, retprop) {
         , psig => 'ComposableAttr')
     
     return o.%retprop%
-}
-
-_rt_GetFieldConstant(mdi, field) {
-    mdt := ComObjQuery(mdi, "{D8F579AB-402D-4B8E-82D9-5D63B1065C68}") ; IMetaDataTables
-    
-    static tabConstant := 11, GetTableInfo := 9
-    ComCall(GetTableInfo, mdt, "uint", tabConstant
-        , "ptr", 0, "uint*", &cRows := 0, "ptr", 0, "ptr", 0, "ptr", 0)
-    
-    static colType := 0, colParent := 1, colValue := 2, GetColumn := 13, GetBlob := 15
-    ; Rows look to be ordered by Parent, which could be because they are allocated sequentially
-    ; as each field is defined by the compiler, but a simple test compiling C# with mixed fields
-    ; and parameter default values showed rows ordered by Parent row ID, not by definition order.
-    ; That's perfect for binary search.  Row ID excludes the upper byte, but our metadata only
-    ; includes the one type of Parent (FieldDef) anyway.
-    left := 1, right := cRows
-    ; When we're called for sequential fields, the rows we want are often sequential as well,
-    ; so try the next row after the last found row first.  Worst case, it's always wrong and
-    ; the binary search has an extra iteration which isn't 50-50 but still helps the search.
-    static last_i
-    i := (IsSet(last_i) && last_i < cRows) ? last_i + 1 : (left + right) // 2
-    while left <= right {
-        ComCall(GetColumn, mdt, "uint", tabConstant, "uint", colParent, "uint", i, "uint*", &value:=0)
-        if field > value
-            left := i + 1
-        else if field < value
-            right := i - 1
-        else
-            break
-        i := (left + right) // 2
-    }
-    if left > right {
-        ; Rather than falling back to linear search in case the rows weren't ordered as expected,
-        ; assume the field parameter was invalid.  If that turns out to not be the case, we want
-        ; to know what files need the slower method (or to fix it with another optimization).
-        throw ValueError("No constant found for token.", Format("0x{:x}", field))
-    }
-    last_i := i
-    ComCall(GetColumn, mdt, "uint", tabConstant, "uint", colValue, "uint", i, "uint*", &value:=0)
-    ComCall(GetBlob, mdt, "uint", value, "uint*", &ndata:=0, "ptr*", &pdata:=0)
-    ComCall(GetColumn, mdt, "uint", tabConstant, "uint", colType, "uint", i, "uint*", &value:=0)
-    ; Type must be one of the basic element types (2..14) or CLASS (18) with value 0.
-    ; WinRT only uses constants for enums, always I4 (8) or U4 (9).
-    static primitives := _rt_GetElementTypeMap()
-    return primitives[value].ReadWriteInfo.GetReader()(pdata)
-}
-
-_rt_GetElementTypeMap() {
-    static etm
-    if !IsSet(etm) {
-        etm := Map()
-        eta := [
-            0x1, 'Void',
-            0x2, 'Boolean',
-            0x3, 'Char16',
-            0x4, 'Int8',
-            0x5, 'UInt8',
-            0x6, 'Int16',
-            0x7, 'UInt16',
-            0x8, 'Int32',
-            0x9, 'UInt32',
-            0xa, 'Int64',
-            0xb, 'UInt64',
-            0xc, 'Single',
-            0xd, 'Double',
-            0xe, 'String',
-            0x18, 'IntPtr',
-            0x1c, 'Object',
-        ]
-        i := 1
-        loop eta.length//2 {
-            etm[eta[i]] := RtRootTypes.%eta[i+1]%
-            i += 2
-        }
-    }
-    return etm
 }
 
 MethodWrapper(idx, iid, types, name:=unset) {
@@ -501,6 +327,7 @@ class RtObject extends RtAny {
     __delete() {
         (this.ptr) && ObjRelease(this.ptr)
     }
+    _suppress_diagnostic() => 0 && this.ptr := 0
 }
 
 _rt_CreateClass(classname, baseclass) {
@@ -582,7 +409,7 @@ _rt_GetParameterizedIID(name, types) {
         for t in types {
             if t.HasProp('typeArgs') && t.typeArgs {
                 ; Need the individual names of base type and each type arg.
-                names.Push(t.m.GetTypeDefProps(t.t))
+                names.Push(t.m.GetTypeDefProps(t.t).name)
                 makeNames(t.typeArgs)
             }
             else {

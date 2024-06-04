@@ -10,6 +10,7 @@ class ValueType extends RtAny {
     static FromOffset(buf, offset) {
         return {ptr: buf.ptr + offset, _outer_: buf, base: this.Prototype}
     }
+    Size := unset ; __init isn't called, but the IDE reads this like a declaration.
     CopyToPtr(ptr) {
         DllCall('msvcrt\memcpy', 'ptr', ptr, 'ptr', this, 'ptr', this.Size, 'cdecl')
     }
@@ -30,6 +31,7 @@ class EnumValue extends RtAny {
             return this.%v%.n
         throw TypeError(Format('Value of type "{}" cannot be converted to {}.', type(v), this.prototype.__class), -1)
     }
+    n := unset ; __init isn't called, but the IDE reads this like a declaration.
     s => String(this.n) ; TODO: produce space-delimited strings for flag enums
     ToString() => this.s
 }

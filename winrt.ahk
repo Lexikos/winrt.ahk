@@ -35,9 +35,10 @@ class WinRT {
     )
     static __new() {
         cache := this.TypeCache
-        for e, t in _rt_GetElementTypeMap() {
+        for t in ['Boolean', 'Char16', 'Double', 'Int16', 'Int32', 'Int64', 'Int8', 'IntPtr'
+            , 'Object', 'Single', 'String', 'UInt16', 'UInt32', 'UInt64', 'UInt8', 'UIntPtr'] {
             ; Map the simple types in cache, for parsing generic type names.
-            cache[t.Name] := t
+            cache[t] := RtRootTypes.%t%
         }
         this.DefineProp('__set', {call: RtAny.__set})
     }
@@ -115,23 +116,24 @@ class WinRT {
 class RtMetaDataModule extends MetaDataModule {
     GetTypeByToken(t, typeArgs:=false) {
         scope := -1
-        switch (t >> 24) {
-        case 0x01: ; TypeRef (most common)
+        switch t.Type {
+        case 'TypeRef': ; most common
             ; TODO: take advantage of GetTypeRefProps's scope parameter
-            return WinRT.GetType(this.GetTypeRefProps(t))
-        case 0x02: ; TypeDef
+            return WinRT.GetType(this.GetTypeRefProps(t).name)
+        case 'TypeDef':
             MsgBox 'DEBUG: GetTypeByToken was called with a TypeDef token.`n`n' Error().Stack
             ; TypeDefs usually aren't referenced directly, so just resolve it by
             ; name to ensure caching works correctly.  Although GetType resolving
             ; the TypeDef will be a bit redundant, it should perform the same as
             ; if a TypeRef token was passed in.
-            return WinRT.GetType(this.GetTypeDefProps(t))
-        case 0x1b: ; TypeSpec
-            ; GetTypeSpecFromToken
-            ComCall(44, this, "uint", t, "ptr*", &psig:=0, "uint*", &nsig:=0)
+            return WinRT.GetType(this.GetTypeDefProps(t).name)
+        case 'TypeSpec':
+            sig := this.GetTypeSpecFromToken(t)
+            ; Unlike other signatures, this doesn't start with the calling convention byte
+            ; expected by Decode.  It starts with GENERICINST (0x15), which DecodeGenericInst
+            ; expects to have already been skipped (so don't call that directly).
             ; Signature: 0x15 0x12 <typeref> <argcount> <args>
-            nsig += psig++
-            return _rt_DecodeSigGenericInst(this, &psig, nsig, typeArgs)
+            return rtSignatureDecoder(this, sig, typeArgs).DecodeType()
         default:
             throw Error(Format("Cannot resolve token 0x{:08x} to type info.", t), -1)
         }
@@ -158,11 +160,4 @@ _rt_WrapInspectable(p, typeinfo:=false) {
         ptr: p,
         base: typeinfo.Class.prototype
     }
-}
-
-
-_rt_memoize(this, propname, f := unset) {
-    value := IsSet(f) ? f(this) : this._init_%propname%()
-    this.DefineProp propname, {value: value}
-    return value
 }

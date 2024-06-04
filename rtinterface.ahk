@@ -2,21 +2,26 @@
 #include ffi.ahk
 
 class RtTypeInfo {
+    /**
+     * @param {RtMetaDataModule} mdm 
+     * @param {mdToken} token 
+     * @param {Array} typeArgs Optional array of generic type parameters.
+     */
     __new(mdm, token, typeArgs:=false) {
         this.m := mdm
         this.t := token
         this.typeArgs := typeArgs
         
         ; Determine the base type and corresponding RtTypeInfo subclass.
-        mdm.GetTypeDefProps(token, &flags, &tbase)
-        this.IsSealed := flags & 0x100 ; tdSealed (not composable; can't be subclassed)
+        tdp := mdm.GetTypeDefProps(token)
+        this.IsSealed := tdp.flags & 0x100 ; tdSealed (not composable; can't be subclassed)
         switch {
-            case flags & 0x20:
+            case tdp.flags & 0x20:
                 this.base := RtTypeInfo.Interface.Prototype
-            case (tbase & 0x00ffffff) = 0:  ; Nil token.
-                throw Error(Format('Type "{}" has no base type or interface flag (flags = 0x{:x})', this.Name, flags))
+            case tdp.extends.IsNull():  ; Nil token.
+                throw Error(Format('Type "{}" has no base type or interface flag (flags = 0x{:x})', this.Name, tdp.flags))
             default:
-                basetype := this.m.GetTypeByToken(tbase)
+                basetype := this.m.GetTypeByToken(tdp.extends)
                 if basetype is RtTypeInfo
                     this.base := basetype.base
                 else if basetype.hasProp('TypeClass')
@@ -63,7 +68,13 @@ class RtTypeInfo {
     Name => this.ToString()
     
     ToString() {
-        name := this.m.GetTypeDefProps(this.t)
+        tdp := this.m.GetTypeDefProps(t := this.t), name := tdp.name
+        while (tdp.flags & 7) >= 2 { ; tdVisibilityMask = 7, visibility is tdNestedXxx - used in Win32metadata, not WinRT
+            tdEncl := this.m.GetNestedClassProps(t)
+            tdp := this.m.GetTypeDefProps(tdEncl)
+            name := tdp.name '/' name
+            t := tdEncl
+        }
         if this.typeArgs {
             for t in this.typeArgs
                 name .= (A_Index=1 ? '<' : ',') . String(t)
@@ -72,13 +83,12 @@ class RtTypeInfo {
         return name
     }
 
-    GUID => _rt_memoize(this, 'GUID')
-    _init_GUID() => this.typeArgs
-        ? _rt_GetParameterizedIID(this.m.GetTypeDefProps(this.t), this.typeArgs)
+    GUID => super.GUID := this.typeArgs
+        ? _rt_GetParameterizedIID(this.m.GetTypeDefProps(this.t).name, this.typeArgs)
         : this.m.GetGuidPtr(this.t)
     
     ; Whether this class type supports direct activation (IActivationFactory).
-    HasIActivationFactory => _rt_Enumerator(53, this.m, "uint", this.t, "uint", this.m.ActivatableAttr)(&_)
+    HasIActivationFactory => this.m.EnumCustomAttributes(this.t, this.m.ActivatableAttr)()
     ; Enumerate factory interfaces of this class type.
     Factories() => _rt_EnumAttrWithTypeArg(this.m, this.t, this.m.FactoryAttr)
     ; Enumerate composition factory interfaces of this class type.
@@ -90,84 +100,33 @@ class RtTypeInfo {
     Fields() {
         namebuf := Buffer(2*MAX_NAME_CCH)
         getinfo(&f) {
-            ; GetFieldProps
-            ComCall(57, this.m, "uint", ft := f, "ptr", 0
-                , "ptr", namebuf, "uint", namebuf.size//2, "uint*", &namelen:=0
-                , "ptr*", &flags:=0, "ptr*", &psig:=0, "uint*", &nsig:=0
-                , "ptr", 0, "ptr", 0, "ptr", 0)
-            f := {
-                flags: flags,
-                name: StrGet(namebuf, namelen, "UTF-16"),
-                ; Signature should be CALLCONV_FIELD (6) followed by a single type.
-                type: _rt_DecodeSigType(this.m, &p:=psig+1, psig+nsig, this.typeArgs),
-            }
-            if flags & 0x8000 ; fdHasDefault
-                f.value := _rt_GetFieldConstant(this.m, ft)
+            f := this.m.GetFieldProps(f)
+            f.type := rtSignatureDecoder(this.m, f.sig, this.typeArgs).Decode()
+            if f.flags & 0x8000 ; fdHasDefault
+                f.value := mdGetFieldConstant(this.m, f.t)
         }
         ; EnumFields
-        return _rt_Enumerator_f(getinfo, 20, this.m, "uint", this.t)
+        return mdEnumerator_f(getinfo, 20, this.m, "uint", mdTokenVerifyType(this.t, 0x02))
     }
     
     ; Enumerate methods of this interface/class type.
-    Methods() {
-        namebuf := Buffer(2*MAX_NAME_CCH)
-        resolve_method(&m) {
-            ; GetMethodProps
-            ComCall(30, this.m, "uint", m, "ptr", 0
-                , "ptr", namebuf, "uint", namebuf.size//2, "uint*", &namelen:=0
-                , "uint*", &attr:=0
-                , "ptr*", &psig:=0, "uint*", &nsig:=0 ; signature blob
-                , "ptr", 0, "ptr", 0)
-            m := {
-                name: StrGet(namebuf, namelen, "UTF-16"),
-                flags: attr, ; CorMethodAttr
-                sig: {ptr: psig, size: nsig},
-                t: m
-            }
-        }
-        return _rt_Enumerator_f(resolve_method, 18, this.m, "uint", this.t)
+    Methods(name?) {
+        next := this.m.EnumMethods(this.t)
+        return (&v) => next(&v) && (v := this.m.GetMethodProps(v))
     }
     
     ; Decode a method signature and return [return type, parameter types*].
-    MethodArgTypes(sig) {
-        if (NumGet(sig, 0, "uchar") & 0x0f) > 5
-            throw ValueError("Invalid method signature", -1)
-        return _rt_DecodeSig(this.m, sig.ptr, sig.size, this.typeArgs)
-    }
-    
-    MethodArgProps(method) {
-        args := []
-        ; GetParamForMethodIndex
-        ComCall(52, this.m, "uint", method.t, "uint", 1, "uint*", &pd:=0)
-        namebuf := Buffer(2*MAX_NAME_CCH)
-        loop NumGet(method.sig, 1, "uchar") { ; Get arg count from signature.
-            ; GetParamProps
-            ComCall(59, this.m, "uint", pd + A_Index - 1
-                , "ptr*", &md:=0, "uint*", &index:=0
-                , "ptr", namebuf, "uint", namebuf.size//2, "uint*", &namelen:=0
-                , "uint*", &attr:=0, "ptr", 0, "ptr", 0, "ptr", 0)
-            if md != method.t || index != A_Index
-                throw Error('Unexpected ParamDef sequence in metadata') 
-            args.Push {
-                flags: attr,
-                name: StrGet(namebuf, namelen, "UTF-16"),
-            }
-        }
-        return args
-    }
+    MethodArgTypes(sig) => rtSignatureDecoder(this.m, sig, this.typeArgs).Decode()
     
     Implements() {
-        ; EnumInterfaceImpls
-        next_inner := _rt_Enumerator(7, this.m, "uint", this.t)
-        next_outer(&typeinfo, &impltoken:=unset) {
-            if !next_inner(&impltoken)
+        next := this.m.EnumInterfaceImpls(this.t)
+        return (&typeinfo, &ii:=unset) {
+            if !next(&ii)
                 return false
-            ; GetInterfaceImplProps
-            ComCall(13, this.m, "uint", impltoken, "ptr", 0, "uint*", &t:=0)
-            typeinfo := this.m.GetTypeByToken(t, this.typeArgs)
+            ip := this.m.GetInterfaceImplProps(ii)
+            typeinfo := this.m.GetTypeByToken(ip.iface, this.typeArgs)
             return true
         }
-        return next_outer
     }
 }
 
@@ -251,125 +210,65 @@ class RtRefType extends RtTypeMod {
 }
 
 class RtArrayType extends RtTypeMod {
+    __new(inner, rank := 1, size := [unset], lbound := [unset]) {
+        super.__new(inner)
+        ; These properties are unlikely to be used for WinRT, but are used for Win32metadata.
+        this.rank := rank, this.size := size, this.lbound := lbound
+    }
     ArgPassInfo => ArgPassInfo.Unsupported
-    ToString() => String(this.inner) "[]"
+    ubound[n] => this.size[n] - (this.lbound[n] ?? 0) - 1
+    ToString() {
+        s := String(this.inner) "["
+        Loop this.rank {
+            s .= (A_Index > 1 ? "," : "")
+                . ((this.lbound[A_Index] ?? 0)
+                    ? this.lbound[A_Index] ".." this.ubound[A_Index]
+                    : (this.size[A_Index] ?? ""))
+        }
+        return s .= "]"
+    }
 }
 
-_rt_EnumAttrWithTypeArg(mdi, t, attr) {
+_rt_EnumAttrWithTypeArg(mdi, tk, attrCtor) {
+    if attrCtor = -1 ; Caller found no reference to the attribute in mdi.
+        return (&v) => 0
     attrToType(&v) {
-        ; GetCustomAttributeProps
-        ComCall(54, mdi, "uint", v
-            , "ptr", 0, "ptr", 0, "ptr*", &pdata:=0, "uint*", &ndata:=0)
-        v := WinRT.GetType(getArg1String(pdata))
+        v := WinRT.GetType(getArg1String(mdi.GetCustomAttributeProps(v).data.ptr))
     }
     getArg1String(pdata) {
         return StrGet(pdata + 3, NumGet(pdata + 2, "uchar"), "utf-8")
     }
     ; EnumCustomAttributes := 53
-    return _rt_Enumerator_f(attrToType, 53, mdi, "uint", t, "uint", attr)
+    return mdEnumerator_f(attrToType, 53, mdi, "uint", mdTokenVerify(tk), "uint", mdTokenVerifyType(attrCtor, 0x0a))
 }
 
-_rt_DecodeSig(m, p, size, typeArgs:=false) {
-    if size < 3
-        throw Error("Invalid signature")
-    p2 := p + size
-    cconv := NumGet(p++, "uchar")
-    argc := NumGet(p++, "uchar") + 1 ; +1 for return type
-    return _rt_DecodeSigTypes(m, &p, p2, argc, typeArgs)
-}
-
-_rt_DecodeSigTypes(m, &p, p2, count, typeArgs:=false) {
-    if p > p2
-        throw ValueError("Bad params", -1)
-    types := []
-    while p < p2 && count {
-        types.Push(_rt_DecodeSigType(m, &p, p2, typeArgs))
-        --count
+class rtSignatureDecoder extends mdSignatureDecoder {
+    __new(mdm, sig, typeArgs?) {
+        this.m := mdm
+        super.__new(sig, typeArgs?)
     }
-    ; > vs != is less robust, but some callers want a subset of a signature.
-    if p > p2
-        throw Error("Signature decoding error")
-    return types
+    MakePrimitive(t) => RtRootTypes.%t%
+    MakeClass(t) => this.m.GetTypeByToken(t)
+    MakePtr(t) => RtPtrType(t)
+    MakeRef(t) => RtRefType(t)
+    MakeArray(t, rank := 1, size := [unset], lbound := [unset]) =>
+        RtArrayType(t, rank, size, lbound)
+    MakeTypeArg(index) => RtTypeArg(index)
+    MakeGenericInst(baseType, types) {
+        t := {
+            typeArgs: types,
+            m: baseType.m, t: baseType.t,
+            base: baseType.base
+            ; base: baseType -- not doing this because most of the cached properties
+            ; need to be recalculated for the generic instance, GUID in particular.
+        }
+        ; Check/update cache to ensure there's only one typeinfo for this combination of
+        ; types (to reduce memory usage and permit other optimizations).  This could be
+        ; optimized by decoding sig to names only, rather than resolving to the array
+        ; of types (above).
+        if cached := WinRT.TypeCache.Get(tname := t.Name, false)
+            return cached
+        return WinRT.TypeCache[tname] := t
+    }
 }
 
-_rt_DecodeSigGenericInst(m, &p, p2, typeArgs:=false) {
-    if p > p2
-        throw ValueError("Bad params", -1)
-    baseType := _rt_DecodeSigType(m, &p, p2, typeArgs)
-    types := []
-    types.Capacity := count := NumGet(p++, "uchar")
-    while p < p2 && count {
-        types.Push(_rt_DecodeSigType(m, &p, p2, typeArgs))
-        --count
-    }
-    if p > p2
-        throw Error("Signature decoding error")
-    t := {
-        typeArgs: types,
-        m: baseType.m, t: baseType.t,
-        base: baseType.base
-        ; base: baseType -- not doing this because most of the cached properties
-        ; need to be recalculated for the generic instance, GUID in particular.
-    }
-    ; Check/update cache to ensure there's only one typeinfo for this combination of
-    ; types (to reduce memory usage and permit other optimizations).  This could be
-    ; optimized by decoding sig to names only, rather than resolving to the array
-    ; of types (above).
-    if cached := WinRT.TypeCache.Get(tname := t.Name, false)
-        return cached
-    return WinRT.TypeCache[tname] := t
-}
-
-_rt_DecodeSigType(m, &p, p2, typeArgs:=false) {
-    static primitives := _rt_GetElementTypeMap()
-    static modifiers := Map(
-        0x0f, RtPtrType,
-        0x10, RtRefType,
-        0x1D, RtArrayType,
-    )
-    b := NumGet(p++, "uchar")
-    if t := primitives.get(b, 0)
-        return t
-    if modt := modifiers.get(b, 0)
-        return modt(_rt_DecodeSigType(m, &p, p2, typeArgs))
-    switch b {
-        case 0x11, 0x12: ; value type, class type
-            return m.GetTypeByToken(CorSigUncompressToken(&p))
-        case 0x13: ; generic type parameter
-            if typeArgs
-                return typeArgs[NumGet(p++, "uchar") + 1]
-            return RtTypeArg(NumGet(p++, "uchar") + 1)
-        case 0x15: ; GENERICINST <generic type> <argCnt> <arg1> ... <argn>
-            return _rt_DecodeSigGenericInst(m, &p, p2, typeArgs)
-        case 0x1F, 0x20: ; CMOD <typeDef/Ref> ...
-            modt := CorSigUncompressToken(&p) ; Must be called to advance the pointer.
-            ; modt := m.GetTypeRefProps(modt)
-            t := _rt_DecodeSigType(m, &p, p2, typeArgs)
-            ; So far I've only observed modt='System.Runtime.CompilerServices.IsConst'
-            ; @Debug-Breakpoint(modt !~ 'IsConst') => Unhandled modifier {modt} on type {t.__class}{t}
-            return t
-    }
-    throw Error("type not handled",, Format("{:02x}", b))
-}
-
-CorSigUncompressedDataSize(p) => (
-    (NumGet(p, "uchar") & 0x80) = 0x00 ? 1 :
-    (NumGet(p, "uchar") & 0xC0) = 0x80 ? 2 : 4
-)
-CorSigUncompressData(&p) {
-    if (NumGet(p, "uchar") & 0x80) = 0x00
-        return  NumGet(p++, "uchar")
-    if (NumGet(p, "uchar") & 0xC0) = 0x80
-        return (NumGet(p++, "uchar") & 0x3f) << 8
-            |   NumGet(p++, "uchar")
-    else
-        return (NumGet(p++, "uchar") & 0x1f) << 24
-            |   NumGet(p++, "uchar") << 16
-            |   NumGet(p++, "uchar") << 8
-            |   NumGet(p++, "uchar")
-}
-CorSigUncompressToken(&p) {
-    tk := CorSigUncompressData(&p)
-    return [0x02000000, 0x01000000, 0x1b000000, 0x72000000][(tk & 3) + 1]
-        | (tk >> 2)
-}

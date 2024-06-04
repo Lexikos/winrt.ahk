@@ -60,7 +60,7 @@ class RtNamespace {
             value: m := RtMetaDataModule.Open(RtNamespace.GetPath(this._name))
         }
         prefix := this._name '.'
-        ; Find all namespaces strings in this module.
+        ; Find all namespace strings in this module.
         static tabTypeDef := 2, colNamespace := 2
         static GetTableInfo := 9, GetColumn := 13, GetString := 14
         mdt := ComObjQuery(m, "{D8F579AB-402D-4B8E-82D9-5D63B1065C68}") ; IMetaDataTables
