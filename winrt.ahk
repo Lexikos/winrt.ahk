@@ -1,3 +1,4 @@
+#Requires AutoHotkey v2.1-alpha.11
 
 #include overload.ahk
 #include guid.ahk
