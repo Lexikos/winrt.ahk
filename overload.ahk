@@ -21,7 +21,9 @@ class OverloadedFunc {
         n := f.MinParams
         Loop (f.MaxParams - n) + 1
             if this.m.has(n)
-                throw Error("Ambiguous function overloads", -1)
+                ; FIXME: overload by type (e.g. Microsoft.Windowing.AppWindow.SetIcon(IconId|String))
+                ;throw Error("Ambiguous function overloads", -1)
+                {}
             else
                 this.m[n++] := f
     }
