@@ -144,44 +144,41 @@ _rt_CacheAttributeCtors(mdi, o, retprop) {
     mdai := ComObjQuery(mdi, "{EE62470B-E94B-424e-9B7C-2F00C9249F93}") ; IID_IMetaDataAssemblyImport
     ; Currently we assume if there's no reference to Windows.Foundation,
     ; the current scope of mdi (mdModule(1)) is Windows.Foundation.
-    asm := _rt_FindAssemblyRef(mdai, "Windows.Foundation") || 1
+    ; WindowsAppRuntime references Windows rather than Windows.Foundation.
+    asm := _rt_FindAssemblyRef(mdai, "Windows.Foundation")
+        || _rt_FindAssemblyRef(mdai, "Windows") || 1
     
-    defOnce(o, n, v) {
-        if o.HasOwnProp(n)  ; We currently only support one constructor overload for each usage.
-            && o.%n% != v
-            throw Error("Conflicting constructor found for " n, -1)
-        o.DefineProp n, {value: v}
-    }
-    
-    searchFor(attrType, nameForSig) {
+    searchFor(attrType, names, indexForSig := psig => 1) {
+        mrs := [], mrs.Length := names.Length
         ; FindTypeRef
-        if ComCall(55, mdi, "uint", asm, "wstr", attrType, "uint*", &tr:=0, "int") != 0 {
-            defOnce(o, nameForSig(0), -1)
-            return
+        if ComCall(55, mdi, "uint", asm, "wstr", attrType, "uint*", &tr:=0, "int") = 0 {
+            ; EnumMemberRefs
+            for mr in mdEnumerator_f(false, 23, mdi, "uint", tr) {
+                ; GetMemberRefProps
+                ComCall(31, mdi, "uint", mr, "uint*", &ttype:=0
+                    , "ptr", 0, "uint", 0, "ptr", 0
+                    , "ptr*", &psig:=0, "uint*", &nsig:=0)
+                i := indexForSig(psig)
+                if mrs.Has(i)
+                    throw Error("Conflicting constructor found for " names[i], -1)
+                mrs[i] := mr
+            }
         }
-        ; EnumMemberRefs
-        for mr in mdEnumerator_f(false, 23, mdi, "uint", tr) {
-            ; GetMemberRefProps
-            ComCall(31, mdi, "uint", mr, "uint*", &ttype:=0
-                , "ptr", 0, "uint", 0, "ptr", 0
-                , "ptr*", &psig:=0, "uint*", &nsig:=0)
-            defOnce(o, nameForSig(psig), mr)
-        }
-        else {
-            ; This module doesn't contain any references to attrType, so none of
-            ; its typedefs use that attribute.  Set -1 (invalid) to avoid reentry.
-            defOnce(o, nameForSig(0), -1)
-        }
+        ; If there are no references to an attribute constructor in the module,
+        ; that attribute isn't used, so set -1 (invalid) to avoid reentry.
+        loop mrs.Length
+            o.DefineProp names[A_Index], {value: mrs[A_Index] ?? -1}
     }
     
     searchFor("Windows.Foundation.Metadata.StaticAttribute"
-        , psig => 'StaticAttr')
+        , ['StaticAttr'])
     
     searchFor("Windows.Foundation.Metadata.ActivatableAttribute"
-        , psig => NumGet(psig, 3, "uchar") = 9 ? 'ActivatableAttr' : 'FactoryAttr') ; 9 = uint (first arg is uint, not interface name)
+        , ['ActivatableAttr', 'FactoryAttr']
+        , psig => NumGet(psig, 3, "uchar") = 9 ? 1 : 2) ; 9 = uint (first arg is uint, not interface name)
     
     searchFor("Windows.Foundation.Metadata.ComposableAttribute"
-        , psig => 'ComposableAttr')
+        , ['ComposableAttr'])
     
     return o.%retprop%
 }

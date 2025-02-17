@@ -88,7 +88,7 @@ class RtTypeInfo {
         : this.m.GetGuidPtr(this.t)
     
     ; Whether this class type supports direct activation (IActivationFactory).
-    HasIActivationFactory => this.m.EnumCustomAttributes(this.t, this.m.ActivatableAttr)()
+    HasIActivationFactory => this.m.ActivatableAttr != -1 ? this.m.EnumCustomAttributes(this.t, this.m.ActivatableAttr)() : false
     ; Enumerate factory interfaces of this class type.
     Factories() => _rt_EnumAttrWithTypeArg(this.m, this.t, this.m.FactoryAttr)
     ; Enumerate composition factory interfaces of this class type.
