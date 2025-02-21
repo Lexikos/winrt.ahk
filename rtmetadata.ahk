@@ -144,11 +144,12 @@ _rt_FindAssemblyRef(mdai, target_name) {
 
 _rt_CacheAttributeCtors(mdi, o, retprop) {
     mdai := ComObjQuery(mdi, "{EE62470B-E94B-424e-9B7C-2F00C9249F93}") ; IID_IMetaDataAssemblyImport
-    ; Currently we assume if there's no reference to Windows.Foundation,
-    ; the current scope of mdi (mdModule(1)) is Windows.Foundation.
-    ; WindowsAppRuntime references Windows rather than Windows.Foundation.
+    ; Within a SINGLE version of WindowsAppRuntime, a module's reference
+    ; to ActivatableAttribute may be scoped to any of these three...
     asm := _rt_FindAssemblyRef(mdai, "Windows.Foundation")
-        || _rt_FindAssemblyRef(mdai, "Windows") || 1
+        || _rt_FindAssemblyRef(mdai, "Windows.Foundation.FoundationContract")
+        || _rt_FindAssemblyRef(mdai, "Windows")
+        || 1 ; Allow for when mdi is Windows.Foundation itself (FindTypeRef will fail for any others).
     
     searchFor(attrType, names, indexForSig := psig => 1) {
         mrs := [], mrs.Length := names.Length
@@ -161,8 +162,13 @@ _rt_CacheAttributeCtors(mdi, o, retprop) {
                     , "ptr", 0, "uint", 0, "ptr", 0
                     , "ptr*", &psig:=0, "uint*", &nsig:=0)
                 i := indexForSig(psig)
-                if mrs.Has(i)
-                    throw Error("Conflicting constructor found for " names[i], -1)
+                if mrs.Has(i) {
+                    ; FIXME: handle all attribute constructor overloads
+                    ; This ignores some applied to XamlControlsXamlMetaDataProvider
+                    ; (and maybe others in modules other than Microsoft.UI.Xaml).
+                    continue
+                    ; throw Error("Conflicting constructor found for " names[i], -1)
+                }
                 mrs[i] := mr
             }
         }
