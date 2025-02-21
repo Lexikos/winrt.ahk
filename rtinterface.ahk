@@ -41,6 +41,15 @@ class RtTypeInfo {
         Class => this.m.CreateClassWrapper(this)
         ArgPassInfo => RtObjectArgPassInfo(this)
         ReadWriteInfo => RtInterfaceReadWriteInfo(this)
+        GetGuidFromMetadata() {
+            for ii in this.m.EnumInterfaceImpls(this.t) {
+                if this.m.GetCustomAttributeByName(ii, 'Windows.Foundation.Metadata.DefaultAttribute') {
+                    it := this.m.GetInterfaceImplProps(ii).iface
+                    return this.m.GetTypeByToken(it, this.typeArgs).GUID
+                }
+            }
+            throw Error("Default interface not found for runtime class.",, this.Name)
+        }
     }
     
     class Struct extends RtTypeInfo {
@@ -83,7 +92,9 @@ class RtTypeInfo {
         return name
     }
 
-    GUID => super.GUID := this.typeArgs
+    GUID => super.GUID := this.GetGuidFromMetadata()
+    
+    GetGuidFromMetadata() => this.typeArgs
         ? _rt_GetParameterizedIID(this.m.GetTypeDefProps(this.t).name, this.typeArgs)
         : this.m.GetGuidPtr(this.t)
     

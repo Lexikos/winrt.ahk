@@ -192,8 +192,8 @@ class RtInterfaceArgPassInfo extends ArgPassInfo {
         ; _rt_WrapInspectable attempts to get the runtime class (at runtime) to make
         ; all methods available.  It sometimes fails for generic interfaces, so pass
         ; typeinfo as a default type to wrap.
-        ; TODO: type checking for ScriptToNative
-        super.__new("ptr", false,
+        super.__new("ptr",
+            IsSet(typeinfo) ? ComObjQuery.Bind(, GuidToString(typeinfo.GUID)) : false,
             IsSet(typeinfo) ? _rt_WrapInspectable.Bind(, typeinfo) : _rt_WrapInspectable
         )
     }
@@ -230,7 +230,7 @@ class RtObjectArgPassInfo extends ArgPassInfo {
     __new(typeinfo) {
         local proto
         super.__new("ptr",
-            false, ; TODO: type checking for ScriptToNative
+            ComObjQuery.Bind(, GuidToString(typeinfo.GUID)),
             ; For composable classes, check class at runtime.
             !typeinfo.IsSealed ? _rt_WrapInspectable.Bind(, typeinfo) :
             ; For sealed classes, class is already known.

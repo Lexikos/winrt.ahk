@@ -119,6 +119,8 @@ class MetaDataModule extends mdModule {
     
     GetGuidPtr(td) {
         guidattr := this.GetCustomAttributeByName(td, 'Windows.Foundation.Metadata.GuidAttribute')
+        if !guidattr
+            throw Error("TypeDef has no GuidAttribute",, this.GetTypeDefProps(td).name)
         ; Attribute is serialized with leading 16-bit version (1) and trailing 16-bit number of named args (0).
         if guidattr.size != 20
             throw Error("Unexpected GuidAttribute data length: " guidattr.size)
@@ -448,7 +450,6 @@ _rt_MetaDataLocate(this, pname, mdb) {
                     ComCall(0, mdb, "int64", NumGet(pguid, "int64"), "int64", NumGet(pguid + 8, "int64"))
             }
         case "Object":
-            t := WinRT.GetType(name).Class.__DefaultInterface
             ; SetRuntimeClassSimpleDefault
             ComCall(4, mdb, "ptr", pname, "wstr", t.Name, "ptr", t.GUID)
         case "Delegate":
