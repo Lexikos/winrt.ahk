@@ -22,8 +22,8 @@ class MetaDataModule extends mdModule {
     
     AddIActivationFactoryToWrapper(w) {
         ActivateInstance(cls) {
-            ComCall(6, ComObjQuery(cls, "{00000035-0000-0000-C000-000000000046}") ; IActivationFactory
-                , "ptr*", inst := {base: cls.prototype})
+            ; cls.ptr is IActivationFactory*; this calls ActivateInstance.
+            ComCall(6, cls, "ptr*", inst := {base: cls.prototype})
             return inst
         }
         AddMethodOverloadTo(w, "Call", ActivateInstance, w.prototype.__class ".")
@@ -58,7 +58,12 @@ class MetaDataModule extends mdModule {
         }
         ; Need a factory?
         if ObjOwnPropCount(w) > 1 {
-            static oiid := GUID("{AF86E2E0-B12D-4c6a-9C5A-D7AA65101E90}") ; IInspectable
+            ; "Activation Factories must implement the IActivationFactory interface."
+            ; Using IActivationFactory here avoids the need to ComObjQuery for it later
+            ; (and works even if the class does not support direct activation).
+            ; Using any other IID likely causes an internal QueryInterface,
+            ; since DllGetActivationFactory can only return IActivationFactory*.
+            static oiid := GUID("{00000035-0000-0000-C000-000000000046}")
             hr := DllCall("combase.dll\RoGetActivationFactory"
                 , "ptr", HStringFromString(classname)
                 , "ptr", oiid
