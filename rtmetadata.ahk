@@ -7,17 +7,22 @@ class MetaDataModule extends mdModule {
     ComposableAttr => _rt_CacheAttributeCtors(this, this, 'ComposableAttr')
     
     AddFactoriesToWrapper(w, t) {
+        n := 0
         if t.HasIActivationFactory {
             this.AddIActivationFactoryToWrapper(w)
+            ++n
         }
         for f in t.Factories() {
             this.AddInterfaceToWrapper(w, f, false, "Call")
+            ++n
         }
         for f in t.Composers() {
             this.AddInterfaceToWrapper(w, f, false, "Call")
             if w.HasOwnProp("Call")
                 AddMethodOverloadTo(w, "Call", w => w(0, 0), w.prototype.__class ".")
+            ++n
         }
+        return n
     }
     
     AddIActivationFactoryToWrapper(w) {
@@ -51,13 +56,14 @@ class MetaDataModule extends mdModule {
         w := _rt_CreateClass(classname := t.Name, t.SuperType.Class)
         t.DefineProp 'Class', {value: w}
         ; Add any constructors:
-        this.AddFactoriesToWrapper(w, t)
+        nfactory := this.AddFactoriesToWrapper(w, t)
         ; Add static interfaces to the class:
         for ti in t.Statics() {
             this.AddInterfaceToWrapper(w, ti)
+            ++nfactory
         }
         ; Need a factory?
-        if ObjOwnPropCount(w) > 1 {
+        if nfactory {
             ; "Activation Factories must implement the IActivationFactory interface."
             ; Using IActivationFactory here avoids the need to ComObjQuery for it later
             ; (and works even if the class does not support direct activation).
@@ -351,6 +357,7 @@ class RtObject extends RtAny {
 
 _rt_CreateClass(classname, baseclass) {
     w := Class()
+    w.ptr := 0 ; Block unintentional use of baseclass.ptr via inheritence.
     w.base := baseclass
     w.prototype := {__class: classname, base: baseclass.prototype}
     return w
