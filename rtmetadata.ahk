@@ -325,12 +325,10 @@ _rt_expand_struct_args(ismap, fc, args*) {
 
 _rt_rethrow(fc, e) {
     if DllCall("combase.dll\GetRestrictedErrorInfo", 'ptr*', rer := ComValue(13, 0), 'int') = 0 {
-        ComCall(3, rer, 'ptr*', &pgeneric:=0, 'uint*', &hr:=0, 'ptr*', &pspecific:=0, 'ptr*', &pjunk:=0)
-        ; Replace the generic HRESULT-based message with the more specific one.
-        if NumGet(pspecific, 'ushort')
-            e.Message := Format("(0x{:08X}) {}", hr, StrGet(pspecific))
-        DllCall("oleaut32.dll\SysFreeString", 'ptr', pgeneric)
-        DllCall("oleaut32.dll\SysFreeString", 'ptr', pspecific)
+        ComCall(3, rer, 'ptr*', &pmsg1:=0, 'uint*', &hr:=0, 'ptr*', &pmsg2:=0, 'ptr*', &pjunk:=0)
+        e.Extra := StrGet(pmsg2)
+        DllCall("oleaut32.dll\SysFreeString", 'ptr', pmsg1)
+        DllCall("oleaut32.dll\SysFreeString", 'ptr', pmsg2)
         DllCall("oleaut32.dll\SysFreeString", 'ptr', pjunk)
     }
     e.Stack := RegExReplace(e.Stack, 'm)^\Q' StrReplace(A_LineFile, '\E', '\E\\E\Q') '\E \(\d+\) :.*\R',, &count)
