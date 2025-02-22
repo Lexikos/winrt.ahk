@@ -71,9 +71,35 @@ class MetaDataModule extends mdModule {
             ; since DllGetActivationFactory can only return IActivationFactory*.
             static oiid := GUID("{00000035-0000-0000-C000-000000000046}")
             hr := DllCall("combase.dll\RoGetActivationFactory"
-                , "ptr", HStringFromString(classname)
-                , "ptr", oiid
-                , "ptr*", w, "hresult")
+                , 'ptr', hclassname := HStringFromString(classname)
+                , 'ptr', oiid
+                , 'ptr*', w, 'int')
+            if hr < 0 {
+                ; C++/WinRT falls back to locating the DLL by relying on a naming convention.
+                ; Some runtime classes in the Windows App SDK don't follow this convention,
+                ; but this does work for Microsoft.UI.Xaml.TriggerBase, which fails above.
+                ; https://learn.microsoft.com/windows/uwp/winrt-components/create-a-windows-runtime-component-in-cppwinrt
+                dllname := classname
+                while i := InStr(dllname, '.', true, -2) {
+                    dllname := SubStr(dllname, 1, i)
+                    ; Explicitly call LoadLibrary to avoid Error() overhead on failure and ensure
+                    ; the DLL is unloaded only if DllGetActivationFactory fails.  The proc address
+                    ; could be cached, but there might not be a 1:1 relation between WINMD and DLL,
+                    ; and this executes only once per unique runtime class anyway.
+                    if hmod := DllCall("LoadLibrary", 'str', dllname "dll", 'ptr') {
+                        try
+                            if gaf := DllCall("GetProcAddress", 'ptr', hmod, 'astr', "DllGetActivationFactory", 'ptr') {
+                                hr := DllCall(gaf, 'ptr', hclassname, 'ptr*', w, 'int')
+                                if hr >= 0
+                                    break
+                            }
+                        if hr < 0
+                            DllCall("FreeLibrary", 'ptr', hmod)
+                    }
+                }
+            }
+            if hr < 0
+                throw OSError(hr)
         }
         wrapped := Map()
         addRequiredInterfaces(wp, t, isclass) {
