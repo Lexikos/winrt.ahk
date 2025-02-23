@@ -109,7 +109,6 @@ class RtTypeInfo {
     
     ; Enumerate fields of this struct/enum type.
     Fields() {
-        namebuf := Buffer(2*MAX_NAME_CCH)
         getinfo(&f) {
             f := this.m.GetFieldProps(f)
             f.type := rtSignatureDecoder(this.m, f.sig, this.typeArgs).Decode()

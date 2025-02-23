@@ -242,10 +242,6 @@ class mdToken {
         0x2b, "MethodSpec", ;N
     )
     static null := mdToken(0)
-    static VerifyType(tk, tt) {
-        mdTokenVerifyType(tk, tt)
-        return tk is mdToken ? tk : mdToken(tk)
-    }
 }
 
 mdTokenVerify(tk) {
@@ -272,20 +268,6 @@ mdTokenVerifyType(tk, types*) {
 mdTokenVerifyNonzero(tk) {
     t := mdTokenVerify(tk)
     return (t & 0xFFFFFF) || throw(ValueError("Unexpected null token",, tk))
-}
-
-class mdTypeInfo {
-    t : mdToken
-    /**
-     * @param {mdModule} module 
-     * @param {mdToken} td TypeDef token.
-     */
-    __new(module, td) {
-        this.m := module
-        this.t := mdToken.VerifyType(td, 0x02)
-        tdp := module.GetTypeDefProps(td)
-        this.name := tdp.name
-    }
 }
 
 class mdNameBuffer extends Buffer {

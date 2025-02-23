@@ -106,12 +106,6 @@ class MetaDataModule extends mdModule {
             for ti, impl in t.Implements() {
                 isdefault := isclass && this.GetCustomAttributeByName(impl
                     , 'Windows.Foundation.Metadata.DefaultAttribute')
-                if isdefault {
-                    ; This is currently assigned to the Class and not t so that
-                    ; t.Class.__DefaultInterface will cause this code to execute
-                    ; if needed (i.e. if the class hasn't been wrapped yet).
-                    w.DefineProp '__DefaultInterface', {value: ti}
-                }
                 if wrapped.has(ti_name := ti.Name)
                     continue
                 wrapped[ti_name] := true
