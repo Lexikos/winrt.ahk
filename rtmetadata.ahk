@@ -121,14 +121,13 @@ class MetaDataModule extends mdModule {
     }
     
     AddInterfaceToWrapper(w, t, isdefault:=false, nameoverride:=false) {
-        pguid := t.GUID
-        if !pguid {
+        if isdefault
+            iid := "" ; Skip QueryInterface calls for the default interface.
+        else if pguid := t.GUID
+            iid := GuidToString(pguid)
+        else
             ; @Debug-Output => Interface {t.Name} can't be added because it has no GUID
             return
-        }
-        namebuf := Buffer(2*MAX_NAME_CCH)
-        DllCall("ole32\StringFromGUID2", "ptr", pguid, "ptr", namebuf, "int", MAX_NAME_CCH)
-        iid := StrGet(namebuf)
         name_prefix := w.HasOwnProp('prototype') ? w.prototype.__class "." : w.__class ".Prototype."
         for method in t.Methods() {
             name := nameoverride ? nameoverride : method.name

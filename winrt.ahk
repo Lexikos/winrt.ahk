@@ -144,12 +144,22 @@ class RtMetaDataModule extends MetaDataModule {
 _rt_WrapInspectable(p, typeinfo:=false) {
     if !p
         return
+    ; Wrap early to free on throw.
+    obj := {ptr: p, base: RtObject.Prototype}
     ; IInspectable::GetRuntimeClassName
     hr := ComCall(4, p, "ptr*", &hcls:=0, "int")
     if hr >= 0 {
         cls := HStringRet(hcls)
-        if !typeinfo || !InStr(cls, "<")
+        if !typeinfo || !InStr(cls, "<") {
             typeinfo := WinRT.GetType(cls)
+            ; While caller's typeinfo (if provided) represents the actual type of the pointer,
+            ; p might not be the default interface of the class.  To avoid surprises, make sure
+            ; every wrapped object has a ptr type matching the default interface.  This also
+            ; allows QueryInterface to be skipped for calls to methods from that interface.
+            ComCall(0, p, 'ptr', typeinfo.GUID, 'ptr*', &newp := 0)
+            obj.ptr := newp
+            ObjRelease(p)
+        }
         ; else it's not a full runtime class, so just use the predetermined typeinfo.
     }
     else if !typeinfo || hr != -2147467263 { ; E_NOTIMPL
@@ -157,8 +167,6 @@ _rt_WrapInspectable(p, typeinfo:=false) {
         e.Message := "IInspectable::GetRuntimeClassName failed`n`t" e.Message
         throw e
     }
-    return {
-        ptr: p,
-        base: typeinfo.Class.prototype
-    }
+    ObjSetBase(obj, typeinfo.Class.prototype)
+    return obj
 }
