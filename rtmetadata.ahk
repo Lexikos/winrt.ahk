@@ -361,22 +361,18 @@ class RtAny {
 }
 
 class RtObject extends RtAny {
-    static __new() {
-        this.DefineProp('ptr', {value: 0})
-        this.prototype.DefineProp('ptr', {value: 0})
-        this.DefineProp('__delete', {call: this.prototype.__delete})
-    }
+    ptr : uptr
     __delete() {
         (this.ptr) && ObjRelease(this.ptr)
     }
-    _suppress_diagnostic() => 0 && this.ptr := 0
+    static __delete() {
+        (this.ptr) && ObjRelease(this.ptr)
+    }
 }
 
 _rt_CreateClass(classname, baseclass) {
-    w := Class()
-    w.ptr := 0 ; Block unintentional use of baseclass.ptr via inheritence.
-    w.base := baseclass
-    w.prototype := {__class: classname, base: baseclass.prototype}
+    w := Class(classname, baseclass)
+    w.DefineProp('ptr', {value: 0}) ; Block unintentional use of baseclass.ptr via inheritence.
     return w
 }
 
