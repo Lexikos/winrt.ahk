@@ -1,4 +1,6 @@
 TestCase(name, fn) {
+    if IsSet(TargetTestCase) && TargetTestCase != name
+        return
     static count := (OnExit(summarize), 0), failed := 0
     summarize(*) {
         if failed
