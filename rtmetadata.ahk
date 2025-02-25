@@ -1,4 +1,5 @@
 #include winmd.ahk
+#include util.ahk
 
 class MetaDataModule extends mdModule {
     StaticAttr => _rt_CacheAttributeCtors(this, this, 'StaticAttr')
@@ -234,6 +235,9 @@ MethodWrapper(idx, iid, types, name:=unset) {
                 stn[1 + A_Index] := pass.ScriptToNative
             cca.Push( , pass.NativeType)
         }
+        else if ObjGetDataSize((tcls := t.Class).Prototype) {
+            cca.Push( , tcls)
+        }
         else {
             if !InStr('Struct|Guid', String(t.FundamentalType))
                 MsgBox 'DEBUG: arg type ' String(t) ' of ' name ' is not a struct and has no ArgPassInfo'
@@ -254,19 +258,19 @@ MethodWrapper(idx, iid, types, name:=unset) {
             ; TODO: check type of incoming parameter value
         }
     }
+    ; rettype from metadata translates to a ref out parameter at the end.
     if rettype != FFITypes.Void {
         if pass := rettype.ArgPassInfo {
-            fri := () => &newvarref := 0
-            cca.Push( , pass.NativeType '*')
-            frr := ((nts, &ref) => nts(ref)).Bind(pass.NativeToScript || Number)
+            fri := () => &newvarref := 0 ; Construct a VarRef for ComCall to write into.
+            cca.Push( , pass.NativeType '*') ; Instruct ComCall to pass the value by address.
+            frr := ((nts, &ref) => nts(ref)).Bind(pass.NativeToScript || Number) ; &ref parameter derefs the VarRef.
         }
         else {
-            ; Struct?
-            if !InStr('Struct|Guid', String(rettype.FundamentalType))
+            fri := rettype.Class, proto := fri.Prototype
+            if !(ObjGetDataSize(proto) || InStr('Struct|Guid', String(rettype.FundamentalType)))
                 MsgBox 'DEBUG: return type ' String(rettype) ' of ' name ' is not a struct and has no ArgPassInfo'
-            fri := rettype.Class
             cca.Push( , 'ptr')
-            frr := false
+            frr := GetPropGet(proto, '__value') ?? false
         }
     }
     else {

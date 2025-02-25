@@ -180,6 +180,39 @@ class RefObjPtrAdapter {
     }
 }
 
+RefArgStruct(nt) {
+    ; The value actually passed to DllCall is always a pointer, regardless of nt.
+    static baseClass
+    if !IsSet(baseClass) {
+        baseClass := Class('RefArgStruct')
+        baseClass.Prototype.DefineProp('ptr', {type: 'uptr'})
+    }
+    c := Class('RefArgStruct(' (nt is Class ? nt.Prototype.__Class : nt) ')', baseClass)
+    c.Prototype
+        .DefineProp('__value', {
+            set: RefArgStruct_value_in(this, value?) {
+                if IsSet(value) {
+                    if value is nt
+                        this.ptr := ObjGetDataPtr(value)
+                    else {
+                        this.s := nt()
+                        this.r := value
+                        if IsSet(v := %value%?)
+                            %this.s% := v
+                        this.ptr := ObjGetDataPtr(this.s)
+                    }
+                }
+            }
+        })
+        .DefineProp('__delete', {
+            call: RefArgStruct_value_out(this) {
+                if r := (this.r ?? false)
+                    %r% := %this.s%
+            }
+        })
+    return c
+}
+
 class RtRefType extends RtTypeMod {
     ; TODO: check in/out-ness instead of IsSet
     __new(inner) {
@@ -211,6 +244,11 @@ class RtRefType extends RtTypeMod {
                 return
             }
             MsgBox 'DEBUG: RtRefType being constructed for type "' String(inner) '", with unsupported ArgPassInfo properties'
+        }
+        else if ObjGetDataSize((cls := inner.Class).Prototype) {
+            this.Class := RefArgStruct(cls)
+            this.ArgPassInfo := false
+            return
         }
         else if !(inner is RtTypeInfo.Struct) && inner != RtRootTypes.Guid {
             MsgBox 'DEBUG: RtRefType being constructed for type "' String(inner) '", which has no ArgPassInfo'

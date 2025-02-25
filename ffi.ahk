@@ -32,10 +32,10 @@ class RtRootTypes extends FFITypes {
                 TypeClass: RtTypeInfo.Attribute,
             }],
             ['Boolean', {
-                ArgPassInfo: ArgPassInfo("char", v => !!v, Number),
+                Class: RtBoolean,
             }],
             ['Char16', {
-                ArgPassInfo: ArgPassInfo("ushort", Ord, Chr),
+                Class: RtChar16,
             }],
             ['Delegate', {
                 TypeClass: RtTypeInfo.Delegate,
@@ -93,6 +93,22 @@ class NumberTypeInfo extends BasicTypeInfo {
         this.ReadWriteInfo := ReadWriteInfo.FromArgPassInfo(
             this.ArgPassInfo := ArgPassInfo(nt, false, false)
         )
+    }
+}
+
+class RtBoolean {
+    v : u8
+    __value {
+        get => this.v
+        set => this.v := !!value
+    }
+}
+
+class RtChar16 {
+    v : u16
+    __value {
+        get => Chr(this.v)
+        set => this.v := Ord(value)
     }
 }
 
