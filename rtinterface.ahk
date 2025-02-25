@@ -184,6 +184,10 @@ class RtRefType extends RtTypeMod {
     ; TODO: check in/out-ness instead of IsSet
     __new(inner) {
         super.__new(inner)
+        if (inner.typeArgs ?? 0) && inner.typeArgs[1] is RtTypeArg {
+            this.ArgPassInfo := ArgPassInfo.Unsupported
+            return ; Incomplete generic type (not usable at runtime)
+        }
         if api := inner.ArgPassInfo {
             numberRef_ScriptToNative(&v) => isSet(v) ? &v : &v := 0
             refPtrType_ScriptToNative(a, v) => v = 0 && v is Integer ? v : a(v)
