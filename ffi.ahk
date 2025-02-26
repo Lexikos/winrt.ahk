@@ -3,18 +3,18 @@ class FFITypes {
     static NumTypeSize := Map()
     static __new() {
         for t in [
-            [1,  'Int8' ,  'char' ],  ; Int8 is not used in WinRT, but maybe Win32metadata.
-            [1, 'UInt8' , 'uchar' ],
-            [2,  'Int16',  'short'],
-            [2, 'UInt16', 'ushort'],
-            [4,  'Int32',  'int'  ],
-            [4, 'UInt32', 'uint'  ],
-            [8,  'Int64',  'int64'],
-            [8, 'UInt64', 'uint64'],
-            [4, 'Single', 'float' ],
-            [8, 'Double', 'double'],
-            [A_PtrSize, 'IntPtr', 'ptr'],
-            [A_PtrSize, 'UIntPtr', 'uptr'],
+            [1,  'Int8' ,  'char' ,  'i8'],  ; Int8 is not used in WinRT, but maybe Win32metadata.
+            [1, 'UInt8' , 'uchar' ,  'u8'],
+            [2,  'Int16',  'short', 'i16'],
+            [2, 'UInt16', 'ushort', 'u16'],
+            [4,  'Int32',  'int'  , 'i32'],
+            [4, 'UInt32', 'uint'  , 'u32'],
+            [8,  'Int64',  'int64', 'i64'],
+            [8, 'UInt64', 'uint64', 'u64'],
+            [4, 'Single', 'float' , 'f32'],
+            [8, 'Double', 'double', 'f64'],
+            [A_PtrSize, 'IntPtr', 'ptr', 'iptr'],
+            [A_PtrSize, 'UIntPtr', 'uptr', 'uptr'],
             ] {
             this.NumTypeSize[t[3]] := t[1]
             this.%t[2]% := NumberTypeInfo(t*)
@@ -87,12 +87,13 @@ class BasicTypeInfo {
 }
 
 class NumberTypeInfo extends BasicTypeInfo {
-    __new(size, name, nt) {
+    __new(size, name, nt, pt) {
         this.Name := name
         this.Size := size
         this.ReadWriteInfo := ReadWriteInfo.FromArgPassInfo(
             this.ArgPassInfo := ArgPassInfo(nt, false, false)
         )
+        this.PropType := pt
     }
 }
 
