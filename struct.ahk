@@ -1,16 +1,8 @@
 class ValueType extends RtAny {
-    static Call() {
-        proto := this.Prototype
-        b := Buffer(proto.Size, 0)
-        return {ptr: b.ptr, _buf_: b, base: proto}
+    static __new() {
+        this.DefineProp('Call', Object.GetOwnPropDesc('Call'))
+        this.Prototype.DefineProp('Ptr', {get: ObjGetDataPtr})
     }
-    ; static FromPtr(ptr) {
-    ;     return {ptr: ptr, base: this.Prototype}
-    ; }
-    static FromOffset(buf, offset) {
-        return {ptr: buf.ptr + offset, _outer_: buf, base: this.Prototype}
-    }
-    Size := unset ; __init isn't called, but the IDE reads this like a declaration.
     CopyToPtr(ptr) {
         DllCall('msvcrt\memcpy', 'ptr', ptr, 'ptr', this, 'ptr', this.Size, 'cdecl')
     }

@@ -15,6 +15,13 @@ CreateTypedCallback(fn, opt, argTypes) {
 GetReadersForArgTypes(argTypes) {
     readers := [], offset := 0
     for argType in argTypes {
+        ac := argType.Class
+        if ObjGetDataSize(ac.Prototype) {
+            get_arg_struct(ac, o, p) => StructFromPtr(ac, p + o)
+            readers.Push(get_arg_struct.Bind(ac, offset))
+            offset += A_PtrSize = 4 ? (rwi.Size + 3) // 4 * 4 : A_PtrSize
+            continue
+        }
         rwi := ReadWriteInfo.ForType(argType)
         if rwi.Size > 8 && 8 = A_PtrSize {
             ; Structs larger than 8 bytes are passed by address on x64.

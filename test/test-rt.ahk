@@ -2,8 +2,7 @@
 #include ..\winrt.ahk
 #include ..\windows.ahk
 
-TestCase "RT Struct", () {
-    ; Very basic struct.
+TestCase "RT struct.integers", () {
     wfRect := WinRT('Windows.Foundation.Rect')
     rect := wfRect()
     assert rect is wfRect
@@ -12,8 +11,9 @@ TestCase "RT Struct", () {
     equals rect.X, 0 ; Zero-init
     equals rect.Width, 1920
     equals rect.Height, 1080
-    
-    ; Struct with enum.
+}
+
+TestCase "RT struct.enum", () {
     GamepadReading := WinRT('Windows.Gaming.Input.GamepadReading')
     gr := GamepadReading()
     assert gr is GamepadReading
@@ -25,8 +25,9 @@ TestCase "RT Struct", () {
     gr.Buttons := "view" ; Set by name.
     equals String(gr.Buttons), "View"
     equals gr.LeftTrigger, 4.2
+}
     
-    ; Struct with nested struct.
+TestCase "RT struct.nested", () {
     p := WinRT('Windows.Foundation.Numerics.Plane')()
     p.Normal.X := 1
     p.Normal.Y := 2
@@ -35,17 +36,17 @@ TestCase "RT Struct", () {
     equals p.Normal.X, 1
     equals p.Normal.Z, 3
     equals p.D, 4
-    
-    ; Set nested struct by value.
+
     v3 := WinRT('Windows.Foundation.Numerics.Vector3')()
     v3.X := -1
     v3.Y := -2
     v3.Z := -3
-    p.Normal := v3
+    p.Normal := v3 ; Set nested struct by value.
     equals p.Normal.X, -1
     assert p.Normal != v3
-    
-    ; Struct with HSTRINGs.
+}
+
+TestCase "RT struct.string", () {
     ale := WinRT('Windows.Storage.AccessCache.AccessListEntry')()
     ale.token := "hello"
     ale.metadata := "world"

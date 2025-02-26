@@ -384,32 +384,33 @@ _rt_CreateStructWrapper(t) {
     w := _rt_CreateClass(t.Name, ValueType)
     t.DefineProp 'Class', {value: w}
     wp := w.prototype
-    offset := 0, alignment := 1
     readwriters := Map(), destructors := []
     for f in t.Fields() {
         ft := f.type
-        rwi := ReadWriteInfo.ForType(ft)
-        fsize := rwi.Size
-        falign := rwi.HasProp('Align') ? rwi.Align : fsize
-        offset := align(offset, fsize)
-        wp.DefineProp f.name, {
-            get: reader := rwi.GetReader(offset),
-            set: writer := rwi.GetWriter(offset)
+        if ft is NumberTypeInfo
+            wp.DefineProp f.name, {type: ft.PropType}
+        else if IsSet(fc := ft.Class?) && ObjGetDataSize(fc.Prototype)
+            wp.DefineProp f.name, {type: fc}
+        else {
+            rwi := ReadWriteInfo.ForType(ft)
+            fsize := rwi.Size
+            wp.DefineProp f.name, {type: fsize}
+            offset := wp.GetOwnPropDesc(f.name).offset
+            wp.DefineProp f.name, {
+                get: reader := rwi.GetReader(offset),
+                set: writer := rwi.GetWriter(offset)
+            }
+            readwriters[reader] := writer
+            if fd := rwi.GetDeleter(offset)
+                destructors.Push(fd)
         }
-        readwriters[reader] := writer
-        if fd := rwi.GetDeleter(offset)
-            destructors.Push(fd)
-        if alignment < falign
-            alignment := falign
-        offset += fsize
     }
-    align(n, to) => (n + (to - 1)) // to * to
-    w.DefineProp 'Align', {value: alignment}
-    wp.DefineProp 'Size', {value: align(offset, alignment)}
+    size_before := ObjGetDataSize(wp)
+    (Object.Call)(w) ; FIXME: verify need to instantiate to finalize structure/size?
+    wp.DefineProp 'Size', {value: ObjGetDataSize(wp)}
+    size_after := wp.Size
     if destructors.Length {
         struct_delete(destructors, this) {
-            if this.HasProp('_outer_') ; Lifetime managed by outer RtStruct.
-                return
             for d in destructors
                 try
                     d(this)
@@ -421,6 +422,7 @@ _rt_CreateStructWrapper(t) {
         struct_copy(readwriters, this, ptr) {
             for reader, writer in readwriters
                 writer(ptr, reader(this))
+            ; FIXME: doesn't copy new-struct-based properties
         }
         wp.DefineProp 'CopyToPtr', {call: struct_copy.Bind(readwriters)}
         wp.DefineProp '__delete', {call: struct_delete.Bind(destructors)}
