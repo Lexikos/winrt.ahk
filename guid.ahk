@@ -4,13 +4,20 @@ class GUID {
     static Call(a?) {
         if !IsSet(a)
             return super.Call()
-        if a is String {
-            DllCall("ole32.dll\IIDFromString", "wstr", a, "ptr", g := super.Call(), "hresult")
-            return g
-        }
         if a is Integer
-            return StructFromPtr(this, a)
-        throw TypeError("Unexpected parameter type", -1, Type(a))
+            return a ? StructFromPtr(this, a) : throw(ValueError("Null pointer"))
+        return (g := super.Call(), g.__value := a, g)
+    }
+    
+    __value {
+        set {
+            if value is String
+                DllCall("ole32.dll\IIDFromString", 'wstr', value, 'ptr', this, 'hresult')
+            else if value is GUID
+                DllCall("RtlMoveMemory", 'ptr', this, 'ptr', value, 'ptr', 4)
+            else
+                throw TypeError("Type not convertible to GUID", -1, Type(value))
+        }
     }
     
     static __new() {

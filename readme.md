@@ -122,7 +122,7 @@ Some methods use [array parameters](https://docs.microsoft.com/en-us/uwp/winrt-c
 
 ## GUID
 
-GUID is considered a fundamental type for WinRT. It is passed to and returned from methods much the same as a struct, but there is no metadata describing it. The projection uses `class GUID` defined in `guid.ahk` for any GUID value returned to script. When passing a GUID, the current version of the projection requires the script to pass a pointer to a GUID (as integer or via object with `ptr` property).
+GUID is considered a fundamental type for WinRT. It is passed to and returned from methods much the same as a struct, but there is no metadata describing it. The projection uses `class GUID` defined in `guid.ahk` for any GUID value returned to script. For a GUID parameter, the current version of the projection requires the script to pass a GUID object or string. GUID return values are instances of the GUID class.
 
 ## HString
 
@@ -140,4 +140,4 @@ The projection currently has very few customizations. Some customizations that *
   - Allow primitive values to be passed to `IInspectable` parameters by wrapping them with `PropertyValue`. (Example: TreeViewNode.Content is projected in C# as object, and can be assigned a string.)
   - Automatically convert from `IReference<T>` to `T`, at least when `T` is a primitive type. This is actually what the PropertyValue static methods return, and seems to be the standard type for boxed values returned by properties of type `IInspectable`.
   - Add methods to the various IAsync interfaces to facilitate using Async APIs.
-  - Automatically convert Guid to/from string.
+  - Automatically convert Guid to string? (Automatic conversion from string is done.)

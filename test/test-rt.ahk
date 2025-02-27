@@ -112,15 +112,23 @@ TestCase "RT PropertyValue", () {
     rect.Width += 1
     equals new_rect.Width, 1920
     equals new_rect.Height, 1080
-    ; Guid (it's a fundamental type, not defined as a struct in the metadata).
-    pv := wfPV.CreateGuid(GUID("{af86E2E0-B12D-4c6a-9C5A-D7AA65101E90}"))
-    assert pv.Value is GUID
-    equals String(pv.Value), '{AF86E2E0-B12D-4C6A-9C5A-D7AA65101E90}'
     ; Strings.
     pv := wfPV.CreateString("Hello, world!")
     equals pv.Value, "Hello, world!"
     
     ; TODO: test Int32Array, RectArray
+}
+
+TestCase "RT GUID", () {
+    wfPV := WinRT('Windows.Foundation.PropertyValue')
+    
+    pv := wfPV.CreateGuid(GUID('{af86E2E0-B12D-4c6a-9C5A-D7AA65101E90}'))
+    assert pv.Value is GUID
+    equals String(pv.Value), '{AF86E2E0-B12D-4C6A-9C5A-D7AA65101E90}'
+    
+    pv := wfPV.CreateGuid('{00000035-0000-0000-c000-000000000046}')
+    assert pv.Value is GUID
+    equals String(pv.Value), '{00000035-0000-0000-C000-000000000046}'
 }
 
 TestCase "RT Json (out object, ComObj)", () {
@@ -133,7 +141,7 @@ TestCase "RT Json (out object, ComObj)", () {
     equals jval.ValueType, Json.JsonValueType.String
     jarr.IndexOf(jval, &index := 42) ; "Searches for a JsonValue object", not a value, so doesn't find it.
     equals index, 0
-    ; Querying underlying COM interface (GUID is our internal property; a pointer).
+    ; Querying underlying COM interface.
     iid := GuidToString(WinRT.GetType('Windows.Data.Json.IJsonValue').GUID)
     ijval := ComObjQuery(jval, iid)
     jarr.SetAt(0, ijval) ; Can pass a raw ComValue.
