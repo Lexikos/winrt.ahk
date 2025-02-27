@@ -1,19 +1,21 @@
 class GUID {
-    __new(sguid:=unset) {
-        this.Ptr := DllCall("msvcrt\malloc", "ptr", 16, "cdecl ptr")
-        if IsSet(sguid)
-            DllCall("ole32.dll\IIDFromString", "wstr", sguid, "ptr", this, "hresult")
-        else
-            NumPut("int64", 0, "int64", 0, this)
-    }
+    ptr : 16
     
-    __delete() => DllCall("msvcrt\free", "ptr", this, "cdecl")
+    static Call(a?) {
+        if !IsSet(a)
+            return super.Call()
+        if a is String {
+            DllCall("ole32.dll\IIDFromString", "wstr", a, "ptr", g := super.Call(), "hresult")
+            return g
+        }
+        if a is Integer
+            return StructFromPtr(this, a)
+        throw TypeError("Unexpected parameter type", -1, Type(a))
+    }
     
     static __new() {
         this.Prototype.DefineProp 'ToString', {call: GuidToString}
     }
-    
-    static prototype.Size := 16
 }
 
 GuidToString(guid) {
