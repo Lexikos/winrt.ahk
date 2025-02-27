@@ -269,7 +269,7 @@ MethodWrapper(idx, iid, types, name:=unset) {
             fri := rettype.Class, proto := fri.Prototype
             if !(ObjGetDataSize(proto) || InStr('Struct|Guid', String(rettype.FundamentalType)))
                 MsgBox 'DEBUG: return type ' String(rettype) ' of ' name ' is not a struct and has no ArgPassInfo'
-            cca.Push( , 'ptr')
+            cca.Push( , rettype = RtRootTypes.String ? 'ptr*' : 'ptr')
             frr := GetPropGet(proto, '__value') ?? false
         }
     }

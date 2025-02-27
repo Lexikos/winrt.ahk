@@ -58,8 +58,7 @@ class RtRootTypes extends FFITypes {
                 Class: RtObject,
             }],
             ['String', {
-                ArgPassInfo: ArgPassInfo("ptr", HStringFromString, HStringRet),
-                ReadWriteInfo: ReadWriteInfo.FromClass(HString),
+                Class: HString,
             }],
             ['Struct', {
                 TypeClass: RtTypeInfo.Struct,
