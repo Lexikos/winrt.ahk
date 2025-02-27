@@ -239,23 +239,8 @@ MethodWrapper(idx, iid, types, name:=unset) {
             cca.Push( , tcls)
         }
         else {
-            if !InStr('Struct|Guid', String(t.FundamentalType))
-                MsgBox 'DEBUG: arg type ' String(t) ' of ' name ' is not a struct and has no ArgPassInfo'
-            arg_size := t.Size
-            if arg_size <= 8 || A_PtrSize = 4 {
-                ; On x86, all structs need to be copied by value into the parameter list.
-                ; On x64, structs <= 8 bytes need to be copied but larger structs are
-                ; passed by value.
-                ; Not sure how ARM64 does it.
-                args_to_expand[A_Index + 1] := arg_size  ; +1 to account for `this`
-                loop ceil(arg_size / A_PtrSize)
-                    cca.Push( , 'ptr')
-            }
-            else {
-                ; Large struct to be passed by address.
-                cca.Push( , 'ptr')
-            }
-            ; TODO: check type of incoming parameter value
+            ; @Debug-Breakpoint => Unhandled arg type {t.name} for {name}
+            return (*) => throw(Error("Unhandled arg type " String(t)))
         }
     }
     ; rettype from metadata translates to a ref out parameter at the end.
@@ -267,8 +252,9 @@ MethodWrapper(idx, iid, types, name:=unset) {
         }
         else {
             fri := rettype.Class, proto := fri.Prototype
-            if !(ObjGetDataSize(proto) || InStr('Struct|Guid', String(rettype.FundamentalType)))
-                MsgBox 'DEBUG: return type ' String(rettype) ' of ' name ' is not a struct and has no ArgPassInfo'
+            if !ObjGetDataSize(proto)
+                ; @Debug-Breakpoint => Unhandled return type {rettype.name} for {name}
+                return (*) => throw(Error("Unhandled return type " String(t)))
             cca.Push( , rettype = RtRootTypes.String ? 'ptr*' : 'ptr')
             frr := GetPropGet(proto, '__value') ?? false
         }
