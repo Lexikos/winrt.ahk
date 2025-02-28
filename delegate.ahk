@@ -1,3 +1,5 @@
+#include util.ahk
+
 /*
 CreateTypedCallback(fn, opt, argTypes) {
     local readers := GetReadersForArgTypes(argTypes)
@@ -15,11 +17,12 @@ CreateTypedCallback(fn, opt, argTypes) {
 GetReadersForArgTypes(argTypes) {
     readers := [], offset := 0
     for argType in argTypes {
-        ac := argType.Class
-        if ObjGetDataSize(ac.Prototype) {
+        if IsSet(ac := argType.Class?) && (size := ObjGetDataSize(ac.Prototype)) {
+            get_arg_value(ac, o, p) => %StructFromPtr(ac, p + o)%
             get_arg_struct(ac, o, p) => StructFromPtr(ac, p + o)
-            readers.Push(get_arg_struct.Bind(ac, offset))
-            offset += A_PtrSize = 4 ? (rwi.Size + 3) // 4 * 4 : A_PtrSize
+            reader := (GetPropGet(ac.Prototype, '__value') ?? 0) ? get_arg_value : get_arg_struct
+            readers.Push(reader.Bind(ac, offset))
+            offset += A_PtrSize = 4 ? (size + 3) // 4 * 4 : A_PtrSize
             continue
         }
         rwi := ReadWriteInfo.ForType(argType)

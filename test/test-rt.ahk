@@ -26,7 +26,7 @@ TestCase "RT struct.enum", () {
     equals String(gr.Buttons), "View"
     equals gr.LeftTrigger, 4.2
 }
-    
+
 TestCase "RT struct.nested", () {
     p := WinRT('Windows.Foundation.Numerics.Plane')()
     p.Normal.X := 1
@@ -180,6 +180,82 @@ TestCase "RT StorageFile (async, DateTimeOffset)", () {
     ; (e.g. 133568723702598626 becomes 133568723720000000, off by about 2 seconds).
     ; File system may also affect precision.  So this only compares minutes.
     equals DateDiff(time, FileGetTime(sfile.Path, "C"), "M"), 0
+}
+
+TestCase "RT Delegate mockup", () {
+    arg_tests := [
+        {types: [], i: []},
+        {   ; 2. All signed integer types, in range, positive.
+            types: [RtRootTypes.Int8, RtRootTypes.Int16, RtRootTypes.Int32, RtRootTypes.Int64],
+            i: ['char', 100, 'short', 32000, 'int', 1000000, 'int64', 1000000000000]
+        },
+        {   ; 3. All signed integer types, in range, negative.
+            types: [RtRootTypes.Int8, RtRootTypes.Int16, RtRootTypes.Int32, RtRootTypes.Int64],
+            i: ['char', -100, 'short', -32000, 'int', -1000000, 'int64', -1000000000000]
+        },
+        {   ; 4. All unsigned integer types, in range (accounting for AutoHotkey limitations).
+            types: [RtRootTypes.UInt8, RtRootTypes.UInt16, RtRootTypes.UInt32, RtRootTypes.UInt64],
+            i: ['uchar', 200, 'ushort', 65000, 'uint', 0xF00DCAFE, 'uint64', -9223372036854775808]
+        },
+        {   ; 5. All signed integer types, truncated.
+            types: [RtRootTypes.Int8, RtRootTypes.Int16, RtRootTypes.Int32, RtRootTypes.Int64],
+            i: ['char', 0x321, 'short', 0x54321, 'int', 0x987654321, 'int64', 0xfedcba9876543210],
+            o: [0x21, 0x4321, -0x789ABCDF, -0x123456789ABCDF0]
+        },
+        {   ; 6. All unsigned integer types, truncated.
+            types: [RtRootTypes.UInt8, RtRootTypes.UInt16, RtRootTypes.UInt32, RtRootTypes.UInt64],
+            i: ['uchar', 0x1AA, 'ushort', 0x2BBBB, 'uint', 0x3CCCCCCCC, 'uint64', 0xfedcba9876543210],
+            o: [0xAA, 0xBBBB, 0xCCCCCCCC, -0x123456789ABCDF0]
+        },
+        {   ; 7. Floating-point types.
+            types: [RtRootTypes.Single, RtRootTypes.Double, RtRootTypes.Single, RtRootTypes.Double],
+            i: ['float', 1.2, 'double', 1.2, 'float', 1234567.89012345, 'double', 1234567.89012345],
+            o: [1.2000000476837158, 1.2, 1234567.875, 1234567.89012345]
+        },
+        {   ; 8. Pointer integer type aliases.
+            types: [RtRootTypes.IntPtr, RtRootTypes.UIntPtr],
+            i: ['ptr', 0x1ffffffff, 'uptr', 0x280808080],
+            o: [A_PtrSize = 8 ? 0x1ffffffff : -1, A_PtrSize = 8 ? 0x280808080 : 0x80808080]
+        },
+        {   ; 9. Basic non-integer integral types.
+            types: [RtRootTypes.Boolean, RtRootTypes.Char16],
+            i: ['int', 0x100, 'int', 0x10002b24],
+            o: [false, Chr(0x2b24)]
+        },
+        {   ; 10. Strings.
+            types: [RtRootTypes.String],
+            i: [HString, "This is a string."]
+        },
+    ]
+    for test in arg_tests {
+        test_index := A_Index
+        try {
+            ; DelegateFactory must not be freed prior to releasing all delegates it created.
+            factory := DelegateFactory(GUID(), test.types)
+            b := unset
+            delegate := factory((a*) => b := a)
+            ComCall(3, delegate, test.i*)
+            delegate := unset
+        }
+        catch as e {
+            e.Message := "(Arg test " test_index ") " e.Message
+             throw e
+        }
+        if !IsSet(b)
+            throw Error(Format('Arg test {}; args not received or function not called', test_index))
+        arg_count := test.i.Length // 2
+        if b.Length != arg_count
+            throw Error(Format('Arg test {}; arg count {}, expected {}', test_index, b.Length, arg_count))
+        for actual in b {
+            expected := test.HasProp('o') ? test.o[A_Index] : test.i[A_Index*2]
+            if Type(actual) != Type(expected)
+                throw Error(Format('Arg test {}; arg {} type {}, expected {}', test_index, A_Index, Type(actual), Type(expected)))
+            if !(expected is RtObject ? objectsEqual(actual, expected) : actual == expected)
+                throw Error(Format('Arg test {}; arg {} value "{}", expected "{}"', test_index, A_Index, actual, expected))
+        }
+    }
+    punk(a) => ComObjQuery(a, "{00000000-0000-0000-C000-000000000046}")
+    objectsEqual(a, b) => punk(a).ptr = punk(b).ptr
 }
 
 TestCase "RT Delegate", () {
