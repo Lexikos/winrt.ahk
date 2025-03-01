@@ -244,16 +244,15 @@ class RtInterfaceReadWriteInfo extends ReadWriteInfo {
 
 class RtObjectArgPassInfo extends ArgPassInfo {
     __new(typeinfo) {
-        local proto
+        static new := Object.Call
         super.__new("ptr",
             ComObjQuery.Bind(, GuidToString(typeinfo.GUID)),
             ; For composable classes, check class at runtime.
             !typeinfo.IsSealed ? _rt_WrapInspectable.Bind(, typeinfo) :
             ; For sealed classes, class is already known.
-            rt_wrapSpecificClass(p) => p && {
-                ptr: p,
-                base: IsSet(proto) ? proto : proto := typeinfo.Class.prototype
-            }
+            rt_wrapSpecificClass(p) => (
+                p ? (x := new(typeinfo.Class), x.ptr := p, x) : unset
+            )
         )
     }
 }

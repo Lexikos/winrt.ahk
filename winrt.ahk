@@ -145,7 +145,7 @@ _rt_WrapInspectable(p, typeinfo:=false) {
     if !p
         return
     ; Wrap early to free on throw.
-    obj := {ptr: p, base: RtObject.Prototype}
+    obj := (Object.Call)(RtObject), obj.ptr := p
     ; IInspectable::GetRuntimeClassName
     hr := ComCall(4, p, "ptr*", &hcls:=0, "int")
     if hr >= 0 {
