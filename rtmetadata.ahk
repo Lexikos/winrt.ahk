@@ -39,6 +39,7 @@ class MetaDataModule extends mdModule {
         w := _rt_CreateClass(t_name := t.Name, RtObject)
         t.DefineProp 'Class', {value: w}
         this.AddInterfaceToWrapper(w.prototype, t, true)
+        this.AddInterfaceCoercion(w.prototype, t)
         wrapped := Map()
         addreq(w.prototype, t)
         addreq(w, t) {
@@ -118,6 +119,8 @@ class MetaDataModule extends mdModule {
         }
         ; Add instance interfaces:
         addRequiredInterfaces(w.prototype, t, true)
+        if wrapped.Count
+            this.AddInterfaceCoercion(w.prototype, t)
         return w
     }
     
@@ -146,6 +149,15 @@ class MetaDataModule extends mdModule {
             }
             AddMethodOverloadTo(w, name, wrapper, name_prefix)
         }
+    }
+    
+    AddInterfaceCoercion(w, t) {
+        w.DefineProp('__value', {
+            ; Coerce assigned object/interface pointer to the right interface.
+            set: _rt_ObjectSetValue.Bind(t.GUID),
+            ; Wrap according to runtime class, if it can vary from t.Class.
+            get: _rt_ObjectGetValue.Bind(Object.Call.Bind({Prototype: w}))
+        })
     }
     
     GetGuidPtr(td) {
@@ -357,6 +369,11 @@ class RtObject extends RtAny {
     }
     static __delete() {
         (this.ptr) && ObjRelease(this.ptr)
+    }
+    class Dynamic extends RtObject {
+        static __new() {
+            this.Prototype.DefineProp('__value', {get: _rt_ObjectGetValue.Bind(Object.Call.Bind(this))})
+        }
     }
 }
 

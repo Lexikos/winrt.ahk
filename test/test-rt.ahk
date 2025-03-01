@@ -184,7 +184,9 @@ TestCase "RT StorageFile (async, DateTimeOffset)", () {
 
 TestCase "RT Delegate mockup", () {
     arg_tests := [
-        {types: [], i: []},
+        {   ; 1. Safe baseline.
+            types: [], i: []
+        },
         {   ; 2. All signed integer types, in range, positive.
             types: [RtRootTypes.Int8, RtRootTypes.Int16, RtRootTypes.Int32, RtRootTypes.Int64],
             i: ['char', 100, 'short', 32000, 'int', 1000000, 'int64', 1000000000000]
@@ -226,6 +228,20 @@ TestCase "RT Delegate mockup", () {
             types: [RtRootTypes.String],
             i: [HString, "This is a string."]
         },
+        {   ; 11. Objects.
+            types: [RtRootTypes.Object, JV := WinRT.GetType('Windows.Data.Json.JsonValue')],
+            i: ['ptr', JV.Class.Parse("{}"), 'ptr', JV.Class.Parse("1")]
+        },
+        {   ; 12. Enum (Int32).
+            types: [WinRT.GetType('Windows.Foundation.PropertyType')],
+            i: ['int', 13],
+            o: [WinRT('Windows.Foundation.PropertyType').Inspectable]
+        },
+        {   ; 13. Enum (UInt32, FlagsAttribute).
+            types: [WinRT.GetType('Windows.Storage.FileAttributes')],
+            i: ['int', 0x30],
+            o: [WinRT('Windows.Storage.FileAttributes')(0x30)]
+        },
     ]
     for test in arg_tests {
         test_index := A_Index
@@ -236,26 +252,39 @@ TestCase "RT Delegate mockup", () {
             delegate := factory((a*) => b := a)
             ComCall(3, delegate, test.i*)
             delegate := unset
+            if !IsSet(b)
+                throw Error('args not received or function not called')
+            arg_count := test.i.Length // 2
+            if b.Length != arg_count
+                throw Error(Format('arg count {}, expected {}', b.Length, arg_count))
+            for actual in b {
+                expected := test.HasProp('o') ? test.o[A_Index] : test.i[A_Index*2]
+                if Type(actual) != Type(expected)
+                    throw Error(Format('arg {} type {}, expected {}', A_Index, Type(actual), Type(expected)))
+                switch {
+                    case actual is Object && ObjGetDataSize(actual):
+                        equal := structsEqual(actual, expected)
+                    case actual is EnumValue && !expected.HasOwnProp('s'):
+                        equal := actual.n == expected.n
+                    default:
+                        equal := actual == expected
+                }
+                if !equal {
+                    throw Error(actual is Object
+                        ? Format('arg {} value not equal ({})', A_Index, Type(actual))
+                        : Format('arg {} value "{}", expected "{}"', A_Index, actual, expected))
+                }
+            }
         }
         catch as e {
-            e.Message := "(Arg test " test_index ") " e.Message
-             throw e
-        }
-        if !IsSet(b)
-            throw Error(Format('Arg test {}; args not received or function not called', test_index))
-        arg_count := test.i.Length // 2
-        if b.Length != arg_count
-            throw Error(Format('Arg test {}; arg count {}, expected {}', test_index, b.Length, arg_count))
-        for actual in b {
-            expected := test.HasProp('o') ? test.o[A_Index] : test.i[A_Index*2]
-            if Type(actual) != Type(expected)
-                throw Error(Format('Arg test {}; arg {} type {}, expected {}', test_index, A_Index, Type(actual), Type(expected)))
-            if !(expected is RtObject ? objectsEqual(actual, expected) : actual == expected)
-                throw Error(Format('Arg test {}; arg {} value "{}", expected "{}"', test_index, A_Index, actual, expected))
+            e.Message := "Arg test " test_index "; " e.Message
+            throw e
         }
     }
-    punk(a) => ComObjQuery(a, "{00000000-0000-0000-C000-000000000046}")
-    objectsEqual(a, b) => punk(a).ptr = punk(b).ptr
+    structsEqual(a, b) => (
+        (az := ObjGetDataSize(a)) == ObjGetDataSize(b) &&
+        DllCall("RtlCompareMemory", 'ptr', ObjGetDataPtr(a), 'ptr', ObjGetDataPtr(b), 'ptr', az) == az
+    )
 }
 
 TestCase "RT Delegate", () {
@@ -270,4 +299,4 @@ TestCase "RT Delegate", () {
     equals dir, A_ScriptFullPath
 }
 
-; TODO: tests for interfaces, delegates, arrays
+; TODO: tests for interfaces, arrays

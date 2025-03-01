@@ -18,9 +18,10 @@ GetReadersForArgTypes(argTypes) {
     readers := [], offset := 0
     for argType in argTypes {
         if IsSet(ac := argType.Class?) && (size := ObjGetDataSize(ac.Prototype)) {
+            ; FIXME: All classes are required to use __value to return a new instance,
+            ; otherwise it is unsafe to retain the struct object after delegate returns.
             get_arg_value(ac, o, p) => %StructFromPtr(ac, p + o)%
-            get_arg_struct(ac, o, p) => StructFromPtr(ac, p + o)
-            reader := (GetPropGet(ac.Prototype, '__value') ?? 0) ? get_arg_value : get_arg_struct
+            reader := get_arg_value
             readers.Push(reader.Bind(ac, offset))
             offset += A_PtrSize = 4 ? (size + 3) // 4 * 4 : A_PtrSize
             continue
@@ -116,7 +117,8 @@ CreateComMethodCallback(name, argTypes, retType:=false) {
             (writeRet) && writeRet(NumGet(argPtr, retOffset, 'ptr'), retval)
         }
         catch Any as e {
-            ; @Debug-Breakpoint => {e.__Class} thrown in method {name}: {e.Message}
+            ; @Debug-Output => {e.__Class} thrown in method {name}: {e.Message}
+            ; @Debug-Output => {e.File}:{e.Line}    {e.Extra}
             return e is OSError ? e.number : 0x80004005
         }
         return 0

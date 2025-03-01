@@ -170,3 +170,33 @@ _rt_WrapInspectable(p, typeinfo:=false) {
     ObjSetBase(obj, typeinfo.Class.prototype)
     return obj
 }
+
+_rt_ObjectSetValue(iid, this, value) {
+    ; IUnknown::QueryInterface
+    ComCall(0, this, 'ptr', iid, 'ptr*', &new:=0)
+    old := this.ptr, this.ptr := new, old && ObjRelease(old)
+}
+
+_rt_ObjectGetValue(new, this) {
+    ; IInspectable::GetRuntimeClassName
+    hr := ComCall(4, this, 'ptr*', &hcls:=0, 'int')
+    if hr >= 0 {
+        cls := HStringRet(hcls)
+        if cls !== this.__Class {
+            ; Do not rebase 'this' as it would break any future __value assignments (if in a struct).
+            ; Instead, return a new wrapper of the type reported by the object.
+            typeinfo := WinRT.GetType(cls)
+            ComCall(0, this, 'ptr', typeinfo.GUID, 'ptr*', obj := (Object.Call)(typeinfo.Class))
+            return obj
+        }
+    }
+    else if hr != -2147467263 ; E_NOTIMPL
+        throw OSError(hr)
+    ; It might seem more efficient to return `this`, but it's not useful or safe.
+    ; For a delegate parameter, the ptr property itself becomes invalid when the
+    ; delegate returns (because StructFromPtr is used in GetReadersForArgTypes).
+    ; For an object in a struct (only IReference<T> is valid), it's probably best
+    ; to not give the caller a reference to the struct's field.
+    obj := new(), ObjAddRef(obj.ptr := this.ptr)
+    return obj
+}

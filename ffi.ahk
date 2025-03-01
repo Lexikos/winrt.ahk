@@ -49,13 +49,13 @@ class RtRootTypes extends FFITypes {
             }],
             ['Interface', {
                 TypeClass: RtTypeInfo.Interface,
-                Class: RtObject,
+                Class: RtObject.Dynamic,
             }],
             ['Object', {
                 TypeClass: RtTypeInfo.Object,
                 ArgPassInfo: RtInterfaceArgPassInfo(),
                 ReadWriteInfo: RtInterfaceReadWriteInfo(),
-                Class: RtObject,
+                Class: RtObject.Dynamic,
             }],
             ['String', {
                 Class: HString,
