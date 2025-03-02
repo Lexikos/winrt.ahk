@@ -33,14 +33,10 @@ class RtTypeInfo {
     
     class Interface extends RtTypeInfo {
         Class => this.m.CreateInterfaceWrapper(this)
-        ArgPassInfo => RtInterfaceArgPassInfo(this)
-        ReadWriteInfo => RtInterfaceReadWriteInfo(this)
     }
     
     class Object extends RtTypeInfo {
         Class => this.m.CreateClassWrapper(this)
-        ArgPassInfo => RtObjectArgPassInfo(this)
-        ReadWriteInfo => RtInterfaceReadWriteInfo(this)
         GetGuidFromMetadata() {
             for ii in this.m.EnumInterfaceImpls(this.t) {
                 if this.m.GetCustomAttributeByName(ii, 'Windows.Foundation.Metadata.DefaultAttribute') {
@@ -187,7 +183,7 @@ RefArgStruct(nt) {
         baseClass := Class('RefArgStruct')
         baseClass.Prototype.DefineProp('ptr', {type: 'uptr'})
     }
-    c := Class('RefArgStruct(' (nt is Class ? nt.Prototype.__Class : nt) ')', baseClass)
+    c := Class('RefArgStruct(' nt.Prototype.__Class ')', baseClass)
     c.Prototype
         .DefineProp('__value', {
             set: RefArgStruct_value_in(this, value?) {
@@ -195,7 +191,7 @@ RefArgStruct(nt) {
                     if value is nt
                         this.ptr := ObjGetDataPtr(value)
                     else {
-                        this.s := nt()
+                        this.s := (Object.Call)(nt)
                         this.r := value
                         if IsSet(v := %value%?)
                             %this.s% := v

@@ -1,7 +1,7 @@
 
 GetPropDescProp(a, aProp, descProp) {
     b := a
-    while b && !(ObjHasOwnProp(b, aProp) && IsSet(r := b.GetOwnPropDesc(aProp).%descProp%?))
+    while b && !(ObjHasOwnProp(b, aProp) && (r := b.GetOwnPropDesc(aProp).%descProp%?, IsSet(r)))
         b := b.base
     return (r?)
 }

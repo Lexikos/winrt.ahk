@@ -265,10 +265,16 @@ MethodWrapper(idx, iid, types, name:=unset) {
         }
         else {
             fri := rettype.Class, proto := fri.Prototype
+            fri := Object.Call.Bind(fri)
             if !ObjGetDataSize(proto)
                 ; @Debug-Breakpoint => Unhandled return type {rettype.name} for {name}
                 return (*) => throw(Error("Unhandled return type " String(t)))
-            cca.Push( , rettype = RtRootTypes.String ? 'ptr*' : 'ptr')
+            ; Use 'ptr*' for classes where 'ptr' property is the value itself, otherwise
+            ; the function will write to the wrong place (e.g. corrupt the HSTRING).
+            ; This currently assumes 'ptr' is either the ONLY field or not a field.
+            ; Integer check allows `ptr : 16` and similar (e.g. for GUID).
+            ptrtype := GetPropDescProp(proto, 'ptr', 'type') ?? 0
+            cca.Push( , !(ptrtype is Integer) ? 'ptr*' : 'ptr')
             frr := GetPropGet(proto, '__value') ?? false
         }
     }

@@ -53,8 +53,6 @@ class RtRootTypes extends FFITypes {
             }],
             ['Object', {
                 TypeClass: RtTypeInfo.Object,
-                ArgPassInfo: RtInterfaceArgPassInfo(),
-                ReadWriteInfo: RtInterfaceReadWriteInfo(),
                 Class: RtObject.Dynamic,
             }],
             ['String', {
@@ -200,60 +198,6 @@ class ReadWriteInfo {
             else
                 return ptr_delete_at_offset(buf) => ({ptr: NumGet(buf.ptr, offset, 'ptr'), base: proto}, "")
         }
-    }
-}
-
-class RtInterfaceArgPassInfo extends ArgPassInfo {
-    __new(typeinfo := unset) {
-        ; _rt_WrapInspectable attempts to get the runtime class (at runtime) to make
-        ; all methods available.  It sometimes fails for generic interfaces, so pass
-        ; typeinfo as a default type to wrap.
-        super.__new("ptr",
-            IsSet(typeinfo) ? ComObjQuery.Bind(, GuidToString(typeinfo.GUID)) : false,
-            IsSet(typeinfo) ? _rt_WrapInspectable.Bind(, typeinfo) : _rt_WrapInspectable
-        )
-    }
-}
-
-class RtInterfaceReadWriteInfo extends ReadWriteInfo {
-    __new(typeinfo:=false) {
-        this.typeinfo := typeinfo
-        this.Size := A_PtrSize
-    }
-    
-    GetReader(offset:=0) => (ptr) => (
-        p := NumGet(ptr, offset, "ptr"),
-        ObjAddRef(p),
-        _rt_WrapInspectable(p, this.typeinfo)
-    )
-    
-    GetWriter(offset:=0) => (ptr, value) => (
-        ; TODO: type checking
-        ObjAddRef(pnew := value.ptr),
-        (pold := NumGet(ptr, offset, "ptr")) && ObjRelease(pold),
-        NumPut("ptr", pnew, ptr, offset)
-    )
-    
-    ; Objects aren't supposed to be allowed in structs, but the HttpProgress struct
-    ; has an IReference<UInt64>, which projects to C# as System.Nullable<ulong> but
-    ; really is an interface pointer.
-    GetDeleter(offset:=0) => (ptr) => (
-        (p := NumGet(ptr, offset, "ptr")) && ObjRelease(p)
-    )
-}
-
-class RtObjectArgPassInfo extends ArgPassInfo {
-    __new(typeinfo) {
-        static new := Object.Call
-        super.__new("ptr",
-            ComObjQuery.Bind(, GuidToString(typeinfo.GUID)),
-            ; For composable classes, check class at runtime.
-            !typeinfo.IsSealed ? _rt_WrapInspectable.Bind(, typeinfo) :
-            ; For sealed classes, class is already known.
-            rt_wrapSpecificClass(p) => (
-                p ? (x := new(typeinfo.Class), x.ptr := p, x) : unset
-            )
-        )
     }
 }
 
