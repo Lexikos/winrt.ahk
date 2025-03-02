@@ -138,6 +138,7 @@ class RtTypeInfo {
 
 class RtDecodedType {
     FundamentalType => this
+    Name => this.ToString() ; For debugging.
 }
 
 class RtTypeArg extends RtDecodedType {
@@ -299,6 +300,15 @@ class rtSignatureDecoder extends mdSignatureDecoder {
     MakeClass(t) => this.m.GetTypeByToken(t)
     MakePtr(t) => RtPtrType(t)
     MakeRef(t) => RtRefType(t)
+    MakeModifier(modt, t) {
+        trp := this.m.GetTypeRefProps(modt)
+        if trp.name == 'System.Runtime.CompilerServices.IsConst' && t is RtTypeMod
+            t.IsConst := true
+        else {
+            ; @Debug-Output => Ignoring modifier {trp.Name} on {t.Name}
+        }
+        return t
+    }
     MakeArray(t, rank := 1, size := [unset], lbound := [unset]) =>
         RtArrayType(t, rank, size, lbound)
     MakeTypeArg(index) => RtTypeArg(index)
