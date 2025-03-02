@@ -53,7 +53,7 @@ TestCase "RT struct.string", () {
     equals ale.token ", " ale.metadata, "hello, world"
 }
 
-TestCase "RT Classes", () {
+TestCase "RT statics", () {
     ; Static method
     equals WinRT('Windows.Data.Html.HtmlUtilities').ConvertToText("<b>Hello</b>, <i>world</i>!")
         , "Hello, world!"
@@ -67,55 +67,72 @@ TestCase "RT Classes", () {
 }
 
 TestCase "RT PropertyValue", () {
-    ; PropertyValue has all of the fundamental types, so is a good candidate for
-    ; testing the automatic wrapping of runtime classes.  The first step (wrapping
-    ; the class) requires minimally dealing with all fundamental types as [in] args.
+    ; These tests cover:
+    ;  - Static methods (no direct factory activation)
+    ;  - Parameter values: Char16, Boolean, U?Int\d+, Double, Single, Rect, String
+    ;  - Return values: as above, IReference<T>, enum
+    ;  - Wrapping IReference<T> where object has no proper runtime class
     wfPV := WinRT('Windows.Foundation.PropertyValue')
-    ; Char16 is marshalled as a string of one character.
-    pv := wfPV.CreateChar16("X") ; Returns a "reference" to a Char16.
-    equals Type(pv), 'Windows.Foundation.IReference``1<Char16>'
-    equals pv.Value, "X"
-    ; IPropertyValue.Type : PropertyType
-    pt := pv.Type
-    equals Type(pt), 'Windows.Foundation.PropertyType' ; Enum type
-    equals String(pt), 'Char16' ; Enum name
-    equals pt.n, 10 ; Enum value
-    ; Boolean is marshalled as 0 or 1.
-    pv := wfPV.CreateBoolean(42)
-    equals pv.Value, true
-    equals pv.Type, WinRT('Windows.Foundation.PropertyType').Boolean ; Enum reference equal for canonical values.
-    equals String(pv.Type), 'Boolean' ; Enum name
-    ; Numeric types.
-    ntypes := [
-        ['Double', 4.2],
-        ['UInt8', 0x105, 5], ; Using lack of overflow checking to test whether it's actually UInt8.
-        ['Int16', 65535, -1], ; As above. (Int8 apparently doesn't exist in WinRT.)
-        ['UInt8', 255],
-        ['Int16', 0x1010],
-        ['Int32', 2**30],
-        ['Int64', 2**60],
-    ]
-    for ntype in ntypes {
-        pv := wfPV.Create%ntype[1]%(ntype[2])
-        equals pv.Value, ntype.Length > 2 ? ntype[3] : ntype[2] ; Round-trip value of ntype[1]
-        equals Type(pv.Value), Type(ntype[2]) ; Return type
+    
+    TestCase "RT PropertyValue<Char16>", () {
+        ; Char16 is marshalled as a string of one character.
+        pv := wfPV.CreateChar16("X") ; Returns a "reference" to a Char16.
+        equals Type(pv), 'Windows.Foundation.IReference``1<Char16>'
+        equals pv.Value, "X"
+        ; IPropertyValue.Type : PropertyType
+        pt := pv.Type
+        equals Type(pt), 'Windows.Foundation.PropertyType' ; Enum type
+        equals String(pt), 'Char16' ; Enum name
+        equals pt.n, 10 ; Enum value
     }
-    pv := wfPV.CreateSingle(4.2)
-    equals Round(pv.Value, 6), Round(4.2, 6) ; Approx. round-trip value of Single
-    equals Type(pv.Value), 'Float' ; Return type of Single
-    ; Struct passing/return.
-    wfRect := WinRT('Windows.Foundation.Rect')
-    rect := wfRect(), rect.Width := 1920, rect.Height := 1080
-    pv := wfPV.CreateRect(rect)
-    new_rect := pv.Value
-    assert new_rect is wfRect
-    assert new_rect != rect && new_rect.ptr != rect.ptr ; Struct return is different struct
-    rect.Width += 1
-    equals new_rect.Width, 1920
-    equals new_rect.Height, 1080
-    ; Strings.
-    pv := wfPV.CreateString("Hello, world!")
-    equals pv.Value, "Hello, world!"
+    
+    TestCase "RT PropertyValue<Boolean>", () {
+        ; Boolean is marshalled as 0 or 1.
+        pv := wfPV.CreateBoolean(42)
+        equals pv.Value, true
+        equals pv.Type, WinRT('Windows.Foundation.PropertyType').Boolean ; Enum reference equal for canonical values.
+        equals String(pv.Type), 'Boolean' ; Enum name
+    }
+    
+    TestCase "RT PropertyValue<Number>", () {
+        ; Numeric types.
+        ntypes := [
+            ['Double', 4.2],
+            ['UInt8', 0x105, 5], ; Using lack of overflow checking to test whether it's actually UInt8.
+            ['Int16', 65535, -1], ; As above. (Int8 apparently doesn't exist in WinRT.)
+            ['UInt8', 255],
+            ['Int16', 0x1010],
+            ['Int32', 2**30],
+            ['Int64', 2**60],
+        ]
+        for ntype in ntypes {
+            pv := wfPV.Create%ntype[1]%(ntype[2])
+            equals pv.Value, ntype.Length > 2 ? ntype[3] : ntype[2] ; Round-trip value of ntype[1]
+            equals Type(pv.Value), Type(ntype[2]) ; Return type
+        }
+        pv := wfPV.CreateSingle(4.2)
+        equals Round(pv.Value, 6), Round(4.2, 6) ; Approx. round-trip value of Single
+        equals Type(pv.Value), 'Float' ; Return type of Single
+    }
+    
+    TestCase "RT PropertyValue<Rect>", () {
+        ; Struct passing/return.
+        wfRect := WinRT('Windows.Foundation.Rect')
+        rect := wfRect(), rect.Width := 1920, rect.Height := 1080
+        pv := wfPV.CreateRect(rect)
+        new_rect := pv.Value
+        assert new_rect is wfRect
+        assert new_rect != rect && new_rect.ptr != rect.ptr ; Struct return is different struct
+        rect.Width += 1
+        equals new_rect.Width, 1920
+        equals new_rect.Height, 1080
+    }
+    
+    TestCase "RT PropertyValue<String>", () {
+        ; Strings.
+        pv := wfPV.CreateString("Hello, world!")
+        equals pv.Value, "Hello, world!"
+    }
     
     ; TODO: test Int32Array, RectArray
 }
@@ -132,23 +149,33 @@ TestCase "RT GUID", () {
     equals String(pv.Value), '{00000035-0000-0000-C000-000000000046}'
 }
 
-TestCase "RT Json (out object, ComObj)", () {
-    ; Out parameters returning objects.
+TestCase "RT Json", () {
     JsonArray := WinRT('Windows.Data.Json.JsonArray')
     JsonValue := WinRT('Windows.Data.Json.JsonValue')
-    JsonArray.TryParse('["a", "b"]', &jarr)
-    assert jarr is JsonArray
-    equals String(jarr), '["a","b"]'
-    JsonValue.TryParse('"b"', &jval)
-    equals jval.ValueType, WinRT('Windows.Data.Json.JsonValueType').String
-    equals String(jval.ValueType), 'String'
-    jarr.IndexOf(jval, &index := 42) ; "Searches for a JsonValue object", not a value, so doesn't find it.
-    equals index, 0
-    ; Querying underlying COM interface.
-    iid := GuidToString(WinRT.GetType('Windows.Data.Json.IJsonValue').GUID)
-    ijval := ComObjQuery(jval, iid)
-    jarr.SetAt(0, ijval) ; Can pass a raw ComValue.
-    equals String(jarr), '["b","b"]'
+    
+    TestCase "RT Json - class activation", () {
+        local jarr := JsonArray()
+        equals Type(jarr), 'Windows.Data.Json.JsonArray'
+        equals jarr.Size, 0
+        equals String(jarr), "[]"
+    }
+
+    TestCase "RT Json - out object, ComObj", () {
+        ; Out parameters returning objects.
+        JsonArray.TryParse('["a", "b"]', &jarr)
+        assert jarr is JsonArray
+        equals String(jarr), '["a","b"]'
+        JsonValue.TryParse('"b"', &jval)
+        equals jval.ValueType, WinRT('Windows.Data.Json.JsonValueType').String
+        equals String(jval.ValueType), 'String'
+        jarr.IndexOf(jval, &index := 42) ; "Searches for a JsonValue object", not a value, so doesn't find it.
+        equals index, 0
+        ; Querying underlying COM interface.
+        iid := GuidToString(WinRT.GetType('Windows.Data.Json.IJsonValue').GUID)
+        ijval := ComObjQuery(jval, iid)
+        jarr.SetAt(0, ijval) ; Can pass a raw ComValue.
+        equals String(jarr), '["b","b"]'
+    }
 }
 
 TestCase "RT out Char16", () {
