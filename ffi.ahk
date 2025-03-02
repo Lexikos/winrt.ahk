@@ -61,6 +61,7 @@ class RtRootTypes extends FFITypes {
             ['Struct', {
                 TypeClass: RtTypeInfo.Struct,
             }],
+            ['Type', {}], ; Only used in Attribute constructors (metadata, not runtime)
         ]
         for t in t {
             bti := this.%t[1]% := BasicTypeInfo(t*)

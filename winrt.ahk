@@ -27,6 +27,7 @@ class WinRT {
     static TypeCache := Map(
         "Guid", RtRootTypes.Guid,  ; Found in type names returned by GetRuntimeClassName.
         "System.Guid", RtRootTypes.Guid,  ; Resolved from metadata TypeRef.
+        'System.Type', RtRootTypes.Type,  ; Referenced by Attribute constructors.
         ; All WinRT typedefs tested on Windows 10.0.19043 derive from one of these.
         'System.Attribute', RtRootTypes.Attribute,
         'System.Enum', RtRootTypes.Enum,
