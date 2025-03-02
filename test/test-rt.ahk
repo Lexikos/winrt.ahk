@@ -139,6 +139,7 @@ TestCase "RT Json (out object, ComObj)", () {
     equals String(jarr), '["a","b"]'
     Json.JsonValue.TryParse('"b"', &jval)
     equals jval.ValueType, Json.JsonValueType.String
+    equals String(jval.ValueType), 'String'
     jarr.IndexOf(jval, &index := 42) ; "Searches for a JsonValue object", not a value, so doesn't find it.
     equals index, 0
     ; Querying underlying COM interface.

@@ -257,17 +257,6 @@ class RtObjectArgPassInfo extends ArgPassInfo {
     }
 }
 
-class RtEnumArgPassInfo extends ArgPassInfo {
-    __new(typeinfo) {
-        cls := typeinfo.Class
-        super.__new(
-            cls.__basicType.ArgPassInfo.NativeType,
-            cls.Parse.Bind(cls),
-            cls
-        )
-    }   
-}
-
 class RtDelegateArgPassInfo extends ArgPassInfo {
     __new(typeinfo) {
         if !typeinfo.HasProp('Factory') {

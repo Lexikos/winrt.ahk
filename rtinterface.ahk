@@ -60,7 +60,6 @@ class RtTypeInfo {
     
     class Enum extends RtTypeInfo {
         Class => _rt_CreateEnumWrapper(this)
-        ArgPassInfo => RtEnumArgPassInfo(this)
     }
     
     class Delegate extends RtTypeInfo {
