@@ -55,7 +55,7 @@ TestCase "RT struct.string", () {
 
 TestCase "RT Classes", () {
     ; Static method
-    equals Windows.Data.Html.HtmlUtilities.ConvertToText("<b>Hello</b>, <i>world</i>!")
+    equals WinRT('Windows.Data.Html.HtmlUtilities').ConvertToText("<b>Hello</b>, <i>world</i>!")
         , "Hello, world!"
     ; Static property
     MusicLib := WinRT("Windows.Storage.KnownFolders").MusicLibrary
@@ -104,10 +104,11 @@ TestCase "RT PropertyValue", () {
     equals Round(pv.Value, 6), Round(4.2, 6) ; Approx. round-trip value of Single
     equals Type(pv.Value), 'Float' ; Return type of Single
     ; Struct passing/return.
-    rect := Windows.Foundation.Rect(), rect.Width := 1920, rect.Height := 1080
+    wfRect := WinRT('Windows.Foundation.Rect')
+    rect := wfRect(), rect.Width := 1920, rect.Height := 1080
     pv := wfPV.CreateRect(rect)
     new_rect := pv.Value
-    assert new_rect is Windows.Foundation.Rect
+    assert new_rect is wfRect
     assert new_rect != rect && new_rect.ptr != rect.ptr ; Struct return is different struct
     rect.Width += 1
     equals new_rect.Width, 1920
@@ -133,12 +134,13 @@ TestCase "RT GUID", () {
 
 TestCase "RT Json (out object, ComObj)", () {
     ; Out parameters returning objects.
-    Json := Windows.Data.Json
-    Json.JsonArray.TryParse('["a", "b"]', &jarr)
-    assert jarr is Json.JsonArray
+    JsonArray := WinRT('Windows.Data.Json.JsonArray')
+    JsonValue := WinRT('Windows.Data.Json.JsonValue')
+    JsonArray.TryParse('["a", "b"]', &jarr)
+    assert jarr is JsonArray
     equals String(jarr), '["a","b"]'
-    Json.JsonValue.TryParse('"b"', &jval)
-    equals jval.ValueType, Json.JsonValueType.String
+    JsonValue.TryParse('"b"', &jval)
+    equals jval.ValueType, WinRT('Windows.Data.Json.JsonValueType').String
     equals String(jval.ValueType), 'String'
     jarr.IndexOf(jval, &index := 42) ; "Searches for a JsonValue object", not a value, so doesn't find it.
     equals index, 0
@@ -150,13 +152,13 @@ TestCase "RT Json (out object, ComObj)", () {
 }
 
 TestCase "RT out Char16", () {
-    Windows.Data.Text.UnicodeCharacters.GetSurrogatePairFromCodepoint(0x10000, &high, &low)
+    WinRT('Windows.Data.Text.UnicodeCharacters').GetSurrogatePairFromCodepoint(0x10000, &high, &low)
     equals Ord(high), 0xD800
     equals Ord(low), 0xDC00
 }
 
 TestCase "RT StorageFile (async, DateTimeOffset)", () {
-    StorageFile := Windows.Storage.StorageFile
+    StorageFile := WinRT('Windows.Storage.StorageFile')
     async := StorageFile.GetFileFromPathAsync(A_ScriptFullPath)
     Loop
         sleep 10
@@ -171,7 +173,7 @@ TestCase "RT StorageFile (async, DateTimeOffset)", () {
     ; the specific page for W.F.DateTime itself clarifies this.  Unlike DateTimeOffset, this
     ; is relative to 1601-01-01 (compatible with FILETIME for positive values), not 0001-01-01.
     date := sfile.DateCreated
-    assert date is Windows.Foundation.DateTime
+    assert date is WinRT('Windows.Foundation.DateTime')
     time := date.UniversalTime ; 100-nanosecond intervals since 1601-01-01 (or prior to, if negative).
     time //= 10000000                       ; Convert to seconds.
     time += DateDiff(A_Now, A_NowUTC, "S")  ; Convert to local time.
@@ -290,7 +292,7 @@ TestCase "RT Delegate mockup", () {
 
 TestCase "RT Delegate", () {
     dir := ""
-    async := Windows.Storage.StorageFile.GetFileFromPathAsync(A_ScriptFullPath)
+    async := WinRT('Windows.Storage.StorageFile').GetFileFromPathAsync(A_ScriptFullPath)
     async.Completed := (async, status) => dir := async.GetResults().Path
     ; The wait is done this way to avoid looping infinitely in the case
     ; of the operation failing or an error being raised by the callback.
@@ -298,6 +300,21 @@ TestCase "RT Delegate", () {
         sleep 10
     until async.status.n != 0 ; i.e. not Completed, Canceled or Error.
     equals dir, A_ScriptFullPath
+}
+
+TestCase "Windows", () {
+    ; Namespace discovery is slow and complicated, so other tests use WinRT() and this is done last.
+    ; Struct classes
+    equals Windows.Foundation.Rect, WinRT('Windows.Foundation.Rect')
+    equals Windows.Gaming.Input.GamepadReading, WinRT('Windows.Gaming.Input.GamepadReading')
+    ; Static classes
+    equals Windows.Data.Html.HtmlUtilities, WinRT('Windows.Data.Html.HtmlUtilities')
+    equals Windows.Storage.StorageFile, WinRT('Windows.Storage.StorageFile')
+    ; Activatable classes
+    equals Windows.Data.Json.JsonArray, WinRT('Windows.Data.Json.JsonArray')
+    equals Windows.Data.Json.JsonObject, WinRT('Windows.Data.Json.JsonObject')
+    ; Enum
+    equals Windows.Data.Json.JsonValueType, WinRT('Windows.Data.Json.JsonValueType')
 }
 
 ; TODO: tests for interfaces, arrays
