@@ -29,7 +29,8 @@ class MetaDataModule extends mdModule {
     AddIActivationFactoryToWrapper(w) {
         ActivateInstance(cls) {
             ; cls.ptr is IActivationFactory*; this calls ActivateInstance.
-            ComCall(6, cls, "ptr*", inst := {base: cls.prototype})
+            static new := Object.Call
+            ComCall(6, cls, "ptr*", inst := new(cls))
             return inst
         }
         AddMethodOverloadTo(w, "Call", ActivateInstance, w.prototype.__class ".")
