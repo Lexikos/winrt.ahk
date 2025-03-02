@@ -8,6 +8,12 @@ class ValueType extends RtAny {
     }
 }
 
+_rt_StructSetValuePOD(this, value) {
+    if !HasBase(value, this.base)
+        throw TypeError(Format('{} cannot be assigned to {}', Type(value), Type(this)))
+    DllCall("RtlMoveMemory", 'ptr', ObjGetDataPtr(this), 'ptr', ObjGetDataPtr(value), 'ptr', ObjGetDataSize(this))
+}
+
 class EnumValue extends RtAny {
     static Call(n) {
         if e := this.__item.get(n, 0)

@@ -387,13 +387,16 @@ _rt_CreateStructWrapper(t) {
     w := _rt_CreateClass(t.Name, ValueType)
     t.DefineProp 'Class', {value: w}
     wp := w.prototype
+    pod := true
     readwriters := Map(), destructors := []
     for f in t.Fields() {
         ft := f.type
         if ft is NumberTypeInfo
             wp.DefineProp f.name, {type: ft.PropType}
-        else if IsSet(fc := ft.Class?) && ObjGetDataSize(fc.Prototype)
+        else if IsSet(fc := ft.Class?) && ObjGetDataSize(fc.Prototype) {
             wp.DefineProp f.name, {type: fc}
+            pod := false
+        }
         else {
             rwi := ReadWriteInfo.ForType(ft)
             fsize := rwi.Size
@@ -430,6 +433,10 @@ _rt_CreateStructWrapper(t) {
         wp.DefineProp 'CopyToPtr', {call: struct_copy.Bind(readwriters)}
         wp.DefineProp '__delete', {call: struct_delete.Bind(destructors)}
     }
+    ; FIXME: assignment to non-POD struct
+    ; FIXME: assignment to POD struct with nested struct
+    if pod
+        wp.DefineProp '__value', {set: _rt_StructSetValuePOD}
     return w
 }
 
