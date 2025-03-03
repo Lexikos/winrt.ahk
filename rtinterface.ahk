@@ -50,8 +50,6 @@ class RtTypeInfo {
     
     class Struct extends RtTypeInfo {
         Class => _rt_CreateStructWrapper(this)
-        Size => this.Class.Prototype.Size
-        ReadWriteInfo => ReadWriteInfo.FromClass(this.Class)
     }
     
     class Enum extends RtTypeInfo {

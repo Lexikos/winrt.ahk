@@ -138,7 +138,7 @@ class ReadWriteInfo {
     static ForType(typeinfo) {
         return typeinfo.ReadWriteInfo
             || (api := typeinfo.ArgPassInfo) && this.FromArgPassInfo(api)
-            || this.FromClass(typeinfo.Class)
+            || throw(Error("No ReadWriteInfo for type " typeinfo.Name))
     }
     
     class FromArgPassInfo extends ReadWriteInfo {
@@ -162,44 +162,6 @@ class ReadWriteInfo {
         )
         
         GetDeleter(offset:=0) => false
-    }
-    
-    class FromClass extends ReadWriteInfo {
-        __new(cls) {
-            this.Class := cls
-            this.Size := cls.HasProp('Size') ? cls.Size : cls.Prototype.Size
-            cls.HasProp('Align') && this.Align := cls.Align
-        }
-        
-        GetReader(offset:=0) => this.Class.FromOffset.Bind(this.Class, , offset)
-        
-        GetWriter(offset:=0) {
-            cls := this.Class
-            ; TODO: implement struct coercion
-            copyToPtr := (checkType := !cls.HasProp('CopyToPtr'))
-                ? cls.Prototype.CopyToPtr  ; do not use an overridden method if subclassed
-                : cls.CopyToPtr.Bind(cls)
-            struct_writer(buf, value) {
-                if checkType && !(value is cls)
-                    throw TypeError('Expected ' cls.Prototype.__class ' but got ' Type(value) '.', -1)
-                copyToPtr(value, buf.ptr + offset)
-            }
-            return struct_writer
-        }
-    
-        GetDeleter(offset:=0) {
-            cls := this.Class
-            if !cls.Prototype.HasMethod('__delete')
-                return false
-            ; del := cls.Prototype.__delete
-            ; return struct_delete_at_offset(buf) => del({ptr: buf.ptr + offset})
-            proto := cls.Prototype
-            ; FIXME: assumes all types other than ValueType are pointer types
-            if HasBase(proto, ValueType.Prototype)
-                return struct_delete_at_offset(buf) => ({ptr: buf.ptr + offset, base: proto}, "")
-            else
-                return ptr_delete_at_offset(buf) => ({ptr: NumGet(buf.ptr, offset, 'ptr'), base: proto}, "")
-        }
     }
 }
 
