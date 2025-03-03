@@ -103,8 +103,12 @@ CreateComMethodTable(callbacks, iid) {
 
 CreateComMethodCallback(name, argTypes, retType:=false) {
     readers := GetReadersForArgTypes(argTypes)
-    writeRet := retType && retType != FFITypes.Void
-        && ReadWriteInfo.ForType(retType).GetWriter(0)
+    if !retType || retType == FFITypes.Void
+        writeRet := false
+    else if IsSet(rc := retType.Class?) && ObjGetDataSize(rc.Prototype)
+        writeRet := return_value(ptr, value) => %StructFromPtr(rc, ptr)% := value
+    else
+        writeRet := ReadWriteInfo.ForType(retType).GetWriter(0)
     retOffset := readers.NativeSize
     interface_method(argPtr) {
         try {

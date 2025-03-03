@@ -212,7 +212,7 @@ TestCase "RT StorageFile (async, DateTimeOffset)", () {
     equals DateDiff(time, FileGetTime(sfile.Path, "C"), "M"), 0
 }
 
-TestCase "RT Delegate mockup", () {
+TestCase "RT Delegate parameters", () {
     arg_tests := [
         {   ; 1. Safe baseline.
             types: [], i: []
@@ -315,6 +315,50 @@ TestCase "RT Delegate mockup", () {
         (az := ObjGetDataSize(a)) == ObjGetDataSize(b) &&
         DllCall("RtlCompareMemory", 'ptr', ObjGetDataPtr(a), 'ptr', ObjGetDataPtr(b), 'ptr', az) == az
     )
+}
+
+TestCase "RT Delegate return value", () {
+    JsonArrayType := WinRT.GetType('Windows.Data.Json.JsonArray')
+    JsonArray := JsonArrayType.Class
+    jarr := JsonArray()
+    return_tests := [
+        [RtRootTypes.Int8, 42, 'char*'],
+        [RtRootTypes.Int32, 0x12345678, 'int*'],
+        [RtRootTypes.Int64, 2**60, 'int64*'],
+        [RtRootTypes.Single, 1.2, 'float*', 1.2000000476837158],
+        [RtRootTypes.Double, 1.2, 'double*'],
+        [RtRootTypes.Boolean, 0, 'int*'],
+        [RtRootTypes.Boolean, 1, 'int*'],
+        [RtRootTypes.Boolean, 42, 'int*', 1],
+        [RtRootTypes.Char16, "x", 'ushort*', Ord("x")],
+        [RtRootTypes.String, "Hello, world!", RefArgStruct(HString)],
+        [JsonArrayType, jarr, 'uptr*', jarr.ptr],
+    ]
+    for test in return_tests {
+        test_index := A_Index
+        try {
+            ; DelegateFactory must not be freed prior to releasing all delegates it created.
+            factory := DelegateFactory(GUID(), [], test[1])
+            b := unset
+            delegate := factory((r => r).Bind(test[2]))
+            ComCall(3, delegate, test[3], &actual := 0)
+            delegate := unset
+            
+            expected := test[test.Has(4) ? 4 : 2]
+            if Type(actual) != Type(expected)
+                throw Error(Format('return type {}, expected {}', A_Index, Type(actual), Type(expected)))
+            if actual !== expected {
+                throw Error(actual is Object
+                    ? Format('return value not equal ({})', A_Index, Type(actual))
+                    : Format('return value "{}", expected "{}"', A_Index, actual, expected))
+            }
+        }
+        catch as e {
+            test_name := test[1] is RtTypeInfo
+            e.Message := "Return test " test_index " (" (test[1].Name ?? test[1].Prototype.__Class) "); " e.Message
+            throw e
+        }
+    }
 }
 
 TestCase "RT Delegate", () {

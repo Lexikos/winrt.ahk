@@ -92,6 +92,7 @@ class NumberTypeInfo extends BasicTypeInfo {
             this.ArgPassInfo := ArgPassInfo(nt, false, false)
         )
         this.PropType := pt
+        this.ArgType := nt
     }
 }
 
