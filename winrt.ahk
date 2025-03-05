@@ -192,6 +192,8 @@ _rt_ObjectSetValue(iid, this, value?) {
 }
 
 _rt_ObjectGetValue(new, this) {
+    if !this.ptr
+        return unset
     ; IInspectable::GetRuntimeClassName
     hr := ComCall(4, this, 'ptr*', &hcls:=0, 'int')
     if hr >= 0 {

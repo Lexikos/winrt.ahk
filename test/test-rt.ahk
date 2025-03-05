@@ -384,9 +384,16 @@ TestCase "ValueSet", () {
     set.Insert("first", item1)
     equals last, "ItemInserted:first"
     
-    item2 := wfPV.CreateString("B")
-    set.Insert("second", item2)
-    equals last, "ItemInserted:second"
+    assert set.HasKey("first")
+    assert !set.HasKey("second")
+    
+    lookup1 := set.Lookup("first")
+    equals Type(lookup1), Type(item1)
+    equals lookup1.ptr, item1.ptr
+    
+    set.Insert("null", unset)
+    equals last, "ItemInserted:null"
+    equals set.Lookup("null") ?? "not set", "not set"
 }
 
 TestCase "Windows", () {

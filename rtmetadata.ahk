@@ -349,7 +349,7 @@ _rt_call(fc, fa, fri, frr, args*) {
             args[i] := f(args[i])
         (fri) && args.Push(fri())
         fc(args*)
-        return frr ? frr(args.Pop()) : fri ? args.Pop() : ""
+        return frr ? (frr(args.Pop())?) : fri ? args.Pop() : ""
     } catch OSError as e {
         _rt_rethrow(fc, e)
     }
