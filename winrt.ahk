@@ -172,6 +172,15 @@ _rt_WrapInspectable(p, typeinfo:=false) {
     return obj
 }
 
+_rt_ObjectSetValueObject(this, value?) {
+    if IsSet(value) {
+        if !(value is RtObject)
+            throw TypeError("Expected RtObject but got " Type(value))
+        new := value.ptr
+    }
+    old := this.ptr, this.ptr := new ?? 0, old && ObjRelease(old)
+}
+
 _rt_ObjectSetValue(iid, this, value?) {
     if IsSet(value) {
         if !(value is RtObject || value is ComValue && ComObjType(value) = 13)

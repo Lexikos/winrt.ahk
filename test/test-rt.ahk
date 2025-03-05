@@ -371,6 +371,24 @@ TestCase "RT Delegate", () {
     equals dir, A_ScriptFullPath
 }
 
+TestCase "ValueSet", () {
+    wfPV := WinRT('Windows.Foundation.PropertyValue')
+    
+    set := WinRT('Windows.Foundation.Collections.ValueSet')()
+    
+    local last
+    set.add_MapChanged changed(sender, event) {
+        last := String(event.CollectionChange) ':' String(event.Key)
+    }
+    item1 := wfPV.CreateInt32(1)
+    set.Insert("first", item1)
+    equals last, "ItemInserted:first"
+    
+    item2 := wfPV.CreateString("B")
+    set.Insert("second", item2)
+    equals last, "ItemInserted:second"
+}
+
 TestCase "Windows", () {
     ; Namespace discovery is slow and complicated, so other tests use WinRT() and this is done last.
     ; Struct classes

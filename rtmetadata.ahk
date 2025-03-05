@@ -379,7 +379,10 @@ class RtObject extends RtAny {
     }
     class Dynamic extends RtObject {
         static __new() {
-            this.Prototype.DefineProp('__value', {get: _rt_ObjectGetValue.Bind(Object.Call.Bind(this))})
+            this.Prototype.DefineProp('__value', {
+                get: _rt_ObjectGetValue.Bind(Object.Call.Bind(this)),
+                set: _rt_ObjectSetValueObject
+            })
         }
     }
 }
