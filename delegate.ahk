@@ -43,6 +43,46 @@ GetReadersForArgTypes(argTypes) {
     return readers
 }
 
+class RtDelegate extends RtAny {
+    ptr : uptr
+    __delete() {
+        (this.ptr) && ObjRelease(this.ptr)
+    }
+    __value {
+        set {
+            if value.base != this.base {
+                if !HasMethod(value)
+                    throw TypeError(Format("Value of type {} is not callable", Type(value)))
+                value := this.Wrap(value)
+            }
+            old := this.ptr, ObjAddRef(this.ptr := value.ptr), old && ObjRelease(old)
+        }
+    }
+    static __new() {
+        ; delegate : Class(RtDelegate, typeinfo)
+        this.DefineProp '__new', {call: createDelegateClass(this, typeinfo) {
+            ; delegate.Wrap(value) -- first call
+            static initialWrapDelegate(typeinfo, this, value) {
+                methods := [typeinfo.Methods()*]
+                if methods.Length != 2 || (methods[1].Name '|' methods[2].Name) != '.ctor|Invoke'
+                    throw ValueError("Unexpected delegate typeinfo")
+                method := methods[2] ; Invoke
+                argTypes := typeinfo.MethodArgTypes(method.sig)
+                retType := argTypes.RemoveAt(1)
+                factory := DelegateFactory(typeinfo.GUID, argTypes, retType)
+                this.base.DefineProp('Wrap', {call: wrapDelegate.Bind(factory)})
+                return factory(value)
+            }
+            ; delegate.Wrap(value) -- subsequent calls
+            static wrapDelegate(factory, this, value) {
+                return factory(value)
+            }
+            this.Prototype.__Class := typeinfo.Name
+            this.Prototype.DefineProp('Wrap', {call: initialWrapDelegate.Bind(typeinfo)})
+        }}
+    }
+}
+
 class DelegateFactory {
     __new(iid, argTypes, retType:=false) {
         cb := CreateComMethodCallback('Call', argTypes, retType)

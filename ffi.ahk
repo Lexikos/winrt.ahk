@@ -164,20 +164,3 @@ class ReadWriteInfo {
         GetDeleter(offset:=0) => false
     }
 }
-
-class RtDelegateArgPassInfo extends ArgPassInfo {
-    __new(typeinfo) {
-        if !typeinfo.HasProp('Factory') {
-            methods := [typeinfo.Methods()*]
-            if methods.Length != 2 || (methods[1].Name '|' methods[2].Name) != '.ctor|Invoke'
-                throw Error('Unexpected delegate typeinfo')
-            method := methods[2] ; Invoke
-            types := typeinfo.MethodArgTypes(method.sig)
-            factory := DelegateFactory(typeinfo.GUID, types, types.RemoveAt(1))
-            typeinfo.DefineProp('Factory', {value: factory})
-        }
-        else
-            factory := typeinfo.Factory
-        super.__new("ptr", factory, false)  ; TODO: delegate NativeToScript (e.g. for IAsyncOperation.Completed return value)
-    }
-}

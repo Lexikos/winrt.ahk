@@ -57,7 +57,7 @@ class RtTypeInfo {
     }
     
     class Delegate extends RtTypeInfo {
-        ArgPassInfo => RtDelegateArgPassInfo(this)
+        Class => Class(RtDelegate, this)
     }
     
     class Attribute extends RtTypeInfo {
