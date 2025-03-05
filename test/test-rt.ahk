@@ -134,19 +134,17 @@ TestCase "RT PropertyValue", () {
         equals pv.Value, "Hello, world!"
     }
     
+    TestCase "RT PropertyValue<GUID>", () {
+        pv := wfPV.CreateGuid(GUID('{af86E2E0-B12D-4c6a-9C5A-D7AA65101E90}'))
+        assert pv.Value is GUID
+        equals String(pv.Value), '{AF86E2E0-B12D-4C6A-9C5A-D7AA65101E90}'
+        
+        pv := wfPV.CreateGuid('{00000035-0000-0000-c000-000000000046}')
+        assert pv.Value is GUID
+        equals String(pv.Value), '{00000035-0000-0000-C000-000000000046}'
+    }
+    
     ; TODO: test Int32Array, RectArray
-}
-
-TestCase "RT GUID", () {
-    wfPV := WinRT('Windows.Foundation.PropertyValue')
-    
-    pv := wfPV.CreateGuid(GUID('{af86E2E0-B12D-4c6a-9C5A-D7AA65101E90}'))
-    assert pv.Value is GUID
-    equals String(pv.Value), '{AF86E2E0-B12D-4C6A-9C5A-D7AA65101E90}'
-    
-    pv := wfPV.CreateGuid('{00000035-0000-0000-c000-000000000046}')
-    assert pv.Value is GUID
-    equals String(pv.Value), '{00000035-0000-0000-C000-000000000046}'
 }
 
 TestCase "RT Json", () {
