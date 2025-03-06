@@ -8,22 +8,19 @@ class MetaDataModule extends mdModule {
     ComposableAttr => _rt_CacheAttributeCtors(this, this, 'ComposableAttr')
     
     AddFactoriesToWrapper(w, t) {
-        n := 0
         if t.HasIActivationFactory {
             this.AddIActivationFactoryToWrapper(w)
-            ++n
         }
         for f in t.Factories() {
             this.AddInterfaceToWrapper(w, f, false, "Call")
-            ++n
         }
         for f in t.Composers() {
             this.AddInterfaceToWrapper(w, f, false, "Call")
+            ; Base classes are required to be [Composable], but the corresponding interface
+            ; can be entirely empty if consumers of the API aren't supposed to subclass it.
             if w.HasOwnProp("Call")
                 AddMethodOverloadTo(w, "Call", w => w(0, 0), w.prototype.__class ".")
-            ++n
         }
-        return n
     }
     
     AddIActivationFactoryToWrapper(w) {
@@ -58,15 +55,15 @@ class MetaDataModule extends mdModule {
     CreateClassWrapper(t) {
         w := _rt_CreateClass(classname := t.Name, t.SuperType.Class)
         t.DefineProp 'Class', {value: w}
+        internalPropCount := ObjOwnPropCount(w)
         ; Add any constructors:
-        nfactory := this.AddFactoriesToWrapper(w, t)
+        this.AddFactoriesToWrapper(w, t)
         ; Add static interfaces to the class:
         for ti in t.Statics() {
             this.AddInterfaceToWrapper(w, ti)
-            ++nfactory
         }
         ; Need a factory?
-        if nfactory {
+        if ObjOwnPropCount(w) > internalPropCount {
             ; "Activation Factories must implement the IActivationFactory interface."
             ; Using IActivationFactory here avoids the need to ComObjQuery for it later
             ; (and works even if the class does not support direct activation).
