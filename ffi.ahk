@@ -1,3 +1,4 @@
+#include hstring.ahk
 
 class FFITypes {
     static NumTypeSize := Map()

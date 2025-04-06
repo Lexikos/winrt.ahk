@@ -1,3 +1,4 @@
+#include guid.ahk
 #include util.ahk
 
 /*

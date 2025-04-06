@@ -1,5 +1,5 @@
-
 #include ffi.ahk
+#include delegate.ahk
 
 class RtTypeInfo {
     /**

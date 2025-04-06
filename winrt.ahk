@@ -1,12 +1,10 @@
 #Requires AutoHotkey v2.1-alpha.11
 
-#include overload.ahk
-#include guid.ahk
-#include hstring.ahk
 #include rtmetadata.ahk
 #include rtinterface.ahk
-#include delegate.ahk
 #include struct.ahk
+
+#include hstring.ahk
 
 MAX_NAME_CCH := 1024
 

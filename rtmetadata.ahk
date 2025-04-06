@@ -1,4 +1,8 @@
 #include winmd.ahk
+
+#include guid.ahk
+#include hstring.ahk
+#include overload.ahk
 #include util.ahk
 
 class MetaDataModule extends mdModule {
