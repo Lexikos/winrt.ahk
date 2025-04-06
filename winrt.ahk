@@ -6,8 +6,6 @@
 
 #include hstring.ahk
 
-MAX_NAME_CCH := 1024
-
 /*
   Core WinRT functions.
     - WinRT(classname) creates a runtime object.
