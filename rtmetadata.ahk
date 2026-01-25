@@ -23,7 +23,7 @@ class MetaDataModule extends mdModule {
             ; Base classes are required to be [Composable], but the corresponding interface
             ; can be entirely empty if consumers of the API aren't supposed to subclass it.
             if w.HasOwnProp("Call")
-                AddMethodOverloadTo(w, "Call", w => w(0, 0), w.prototype.__class ".")
+                AddMethodOverloadTo(w, "Call", w => w(unset, unset), w.prototype.__class ".")
         }
     }
     

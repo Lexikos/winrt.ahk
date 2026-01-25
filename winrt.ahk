@@ -172,7 +172,7 @@ _rt_ObjectSetValueObject(this, value?) {
     if IsSet(value) {
         if !(value is RtObject)
             throw TypeError("Expected RtObject but got " Type(value))
-        ObjAddRef(new := value.ptr)
+        (new := value.ptr) && ObjAddRef(new)
     }
     old := this.ptr, this.ptr := new ?? 0, old && ObjRelease(old)
 }
