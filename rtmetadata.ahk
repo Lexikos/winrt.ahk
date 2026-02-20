@@ -269,7 +269,7 @@ MethodWrapper(idx, iid, types, name:=unset) {
             fri := Object.Call.Bind(fri)
             if !ObjGetDataSize(proto)
                 ; @Debug-Breakpoint => Unhandled return type {rettype.name} for {name}
-                return (*) => throw(Error("Unhandled return type " String(t)))
+                return (*) => throw(Error("Unhandled return type " String(rettype)))
             ; Use 'ptr*' for classes where 'ptr' property is the value itself, otherwise
             ; the function will write to the wrong place (e.g. corrupt the HSTRING).
             ; This currently assumes 'ptr' is either the ONLY field or not a field.
