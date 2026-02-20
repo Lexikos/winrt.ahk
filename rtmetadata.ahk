@@ -106,13 +106,16 @@ class MetaDataModule extends mdModule {
                 throw OSError(hr)
         }
         wrapped := Map()
-        addRequiredInterfaces(wp, t, isclass) {
+        addRequiredInterfaces(wp, t, isSealedClass) {
             for ti, impl in t.Implements() {
-                isdefault := isclass && this.GetCustomAttributeByName(impl
-                    , 'Windows.Foundation.Metadata.DefaultAttribute')
                 if wrapped.has(ti_name := ti.Name)
                     continue
                 wrapped[ti_name] := true
+                ; Skip ComObjQuery only for the default interface on a sealed class.
+                ; For a composable class, the method needs to handle `this.ptr` being
+                ; the default interface of a derived class.
+                isdefault := isSealedClass && this.GetCustomAttributeByName(impl
+                    , 'Windows.Foundation.Metadata.DefaultAttribute')
                 ti.m.AddInterfaceToWrapper(wp, ti, isdefault)
                 ; Interfaces "required" by ti are also implemented by the class
                 ; even if it doesn't "require" them directly (sometimes it does).
@@ -120,7 +123,7 @@ class MetaDataModule extends mdModule {
             }
         }
         ; Add instance interfaces:
-        addRequiredInterfaces(w.prototype, t, true)
+        addRequiredInterfaces(w.prototype, t, t.IsSealed)
         if wrapped.Count
             this.AddInterfaceCoercion(w.prototype, t)
         return w
