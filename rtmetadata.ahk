@@ -13,7 +13,7 @@ class MetaDataModule extends mdModule {
     
     AddFactoriesToWrapper(w, t) {
         if t.HasIActivationFactory {
-            this.AddIActivationFactoryToWrapper(w)
+            this.AddIActivationFactoryToWrapper(w, t)
         }
         for f in t.Factories() {
             this.AddInterfaceToWrapper(w, f, false, "Call")
@@ -27,14 +27,16 @@ class MetaDataModule extends mdModule {
         }
     }
     
-    AddIActivationFactoryToWrapper(w) {
-        ActivateInstance(cls) {
+    AddIActivationFactoryToWrapper(w, t) {
+        ActivateInstance(iid, cls) {
             ; cls.ptr is IActivationFactory*; this calls ActivateInstance.
             static new := Object.Call
-            ComCall(6, cls, "ptr*", inst := new(cls))
+            ComCall(6, cls, 'ptr*', insp := ComValue(13, 0))
+            ; insp is not necessarily the default interface of the class.
+            ComCall(0, insp, 'ptr', iid, 'ptr*', inst := new(cls))
             return inst
         }
-        AddMethodOverloadTo(w, "Call", ActivateInstance, w.prototype.__class ".")
+        AddMethodOverloadTo(w, "Call", ActivateInstance.Bind(t.GUID), w.prototype.__class ".")
     }
     
     CreateInterfaceWrapper(t) {
