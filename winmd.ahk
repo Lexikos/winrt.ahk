@@ -1,4 +1,4 @@
-#Requires AutoHotkey v2.1-alpha.11
+#Requires AutoHotkey v2.1-alpha.19
 
 #include guid.ahk
 #include CorSig.ahk
