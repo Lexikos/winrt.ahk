@@ -200,10 +200,15 @@ RefArgStruct(nt) {
             }
         })
         .DefineProp('__delete', {
-            call: RefArgStruct_value_out(this) {
-                if r := (this.r ?? false)
-                    %r% := %this.s%
-            }
+            call: HasProp(nt.Prototype, '__value') ? ; Static check for HasProp differentiates undefined __value from => unset.
+                RefArgStruct_value_out1(this) {
+                    if r := (this.r ?? false)
+                        %r% := this.s.__value
+                } :
+                RefArgStruct_value_out2(this) {
+                    if r := (this.r ?? false)
+                        %r% := this.s
+                }
         })
     return c
 }
