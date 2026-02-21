@@ -19,7 +19,7 @@ class MetaDataModule extends mdModule {
             this.AddInterfaceToWrapper(w, f, false, "Call")
         }
         for f in t.Composers() {
-            this.AddInterfaceToWrapper(w, f, false, "Call")
+            this.AddInterfaceToWrapper(w, f, false, "Call", true)
             ; Base classes are required to be [Composable], but the corresponding interface
             ; can be entirely empty if consumers of the API aren't supposed to subclass it.
             if w.HasOwnProp("Call")
@@ -129,7 +129,7 @@ class MetaDataModule extends mdModule {
         return w
     }
     
-    AddInterfaceToWrapper(w, t, isdefault:=false, nameoverride:=false) {
+    AddInterfaceToWrapper(w, t, isdefault:=false, nameoverride:=false, isComposer:=false) {
         if isdefault
             iid := "" ; Skip QueryInterface calls for the default interface.
         else if pguid := t.GUID
@@ -141,6 +141,14 @@ class MetaDataModule extends mdModule {
         for method in t.Methods() {
             name := nameoverride ? nameoverride : method.name
             types := t.MethodArgTypes(method.sig)
+            if isComposer {
+                ; The last parameter of a composition factory method is always
+                ; the "the non-delegating IInspectable** [out] parameter".
+                ; Normal handling would QueryInterface for the class' default interface,
+                ; which would give an external interface instead of the non-delegating one
+                ; which is used inside subclasses.
+                types[-1] := {Class: RefArgStruct(RtObject), ArgPassInfo: false}
+            }
             wrapper := MethodWrapper(5 + A_Index, iid, types, name_prefix name)
             if method.flags & 0x400 { ; tdSpecialName
                 switch SubStr(name, 1, 4) {
