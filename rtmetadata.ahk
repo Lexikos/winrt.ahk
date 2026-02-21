@@ -161,7 +161,7 @@ class MetaDataModule extends mdModule {
             ; Coerce assigned object/interface pointer to the right interface.
             set: _rt_ObjectSetValue.Bind(t.GUID),
             ; Wrap according to runtime class, if it can vary from t.Class.
-            get: _rt_ObjectGetValue.Bind(Object.Call.Bind({Prototype: w}))
+            get: (t.typeArgs ? _rt_GenericGetValue : _rt_ObjectGetValue).Bind(t.Class)
         })
     }
     
@@ -384,7 +384,7 @@ class RtObject extends RtAny {
     class Dynamic extends RtObject {
         static __new() {
             this.Prototype.DefineProp('__value', {
-                get: _rt_ObjectGetValue.Bind(Object.Call.Bind(this)),
+                get: _rt_ObjectGetValue.Bind(this),
                 set: _rt_ObjectSetValueObject
             })
         }

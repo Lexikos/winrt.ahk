@@ -192,7 +192,7 @@ _rt_ObjectSetValue(iid, this, value?) {
     old := this.ptr, this.ptr := new ?? 0, old && ObjRelease(old)
 }
 
-_rt_ObjectGetValue(new, this) {
+_rt_ObjectGetValue(wclass, this) {
     if !this.ptr
         return unset
     ; IInspectable::GetRuntimeClassName
@@ -214,6 +214,15 @@ _rt_ObjectGetValue(new, this) {
     ; delegate returns (because StructFromPtr is used in GetReadersForArgTypes).
     ; For an object in a struct (only IReference<T> is valid), it's probably best
     ; to not give the caller a reference to the struct's field.
-    obj := new(), ObjAddRef(obj.ptr := this.ptr)
+    obj := (Object.Call)(wclass), ObjAddRef(obj.ptr := this.ptr)
+    return obj
+}
+
+_rt_GenericGetValue(wclass, this) {
+    if !this.ptr
+        return unset
+    ; Don't rely on GetRuntimeClassName for parameterised interfaces, since it often
+    ; returns either the interface name itself (in UWP) or DependencyObject (WinUI3).
+    obj := (Object.Call)(wclass), ObjAddRef(obj.ptr := this.ptr)
     return obj
 }
