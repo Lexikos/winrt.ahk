@@ -170,19 +170,24 @@ _rt_WrapInspectable(p, typeinfo:=false) {
 
 _rt_ObjectSetValueObject(this, value?) {
     if IsSet(value) {
-        if !(value is RtObject)
-            throw TypeError("Expected RtObject but got " Type(value))
-        (new := value.ptr) && ObjAddRef(new)
+        if value is Integer
+            (new := value) && ObjAddRef(new)
+        else
+            (new := value.ptr) && ObjAddRef(new)
+        ; There's no QueryInterface call here; differentiating IInspectable from other IUnknown
+        ; doesn't seem worthwhile since there's no way to verify that it's a valid IUnknown.
     }
     old := this.ptr, this.ptr := new ?? 0, old && ObjRelease(old)
 }
 
 _rt_ObjectSetValue(iid, this, value?) {
     if IsSet(value) {
-        if !(value is RtObject || value is ComValue && ComObjType(value) = 13)
-            throw TypeError(Format("Expected {} but got {}", Type(this), Type(value)))
-        if value.ptr
-            ComCall(0, value, 'ptr', iid, 'ptr*', &new := 0) ; IUnknown::QueryInterface
+        if value is Integer
+            q := value
+        else
+            q := value.ptr
+        if q
+            ComCall(0, q, 'ptr', iid, 'ptr*', &new := 0) ; IUnknown::QueryInterface
     }
     old := this.ptr, this.ptr := new ?? 0, old && ObjRelease(old)
 }
