@@ -529,7 +529,7 @@ mdEnumerator_f(f, methodidx, this, args*) {
     args.InsertAt(1, methodidx, this, "ptr*", &henum)
     args.Push("ptr", buf, "uint", batch_size, "uint*", &count)
     ; Call CloseEnum when finished enumerating.
-    args.__delete := args => ComCall(3, this, "uint", henum, "int")
+    args.__delete := args => ComCall(3, this, "ptr", henum, "int")
     next(&item?) {
         if index = count {
             index := 0
