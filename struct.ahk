@@ -1,7 +1,6 @@
-class ValueType extends RtAny {
+struct ValueType extends RtAny {
     static __new() {
-        this.DefineProp('Call', Object.GetOwnPropDesc('Call'))
-        this.Prototype.DefineProp('Ptr', {get: ObjGetDataPtr})
+        DefineProp(this, 'Call', Struct.GetOwnPropDesc('Call'))
     }
     CopyToPtr(ptr) {
         DllCall('msvcrt\memcpy', 'ptr', ptr, 'ptr', this, 'ptr', this.Size, 'cdecl')
@@ -14,9 +13,9 @@ _rt_StructSetValuePOD(this, value) {
     DllCall("RtlMoveMemory", 'ptr', ObjGetDataPtr(this), 'ptr', ObjGetDataPtr(value), 'ptr', ObjGetDataSize(this))
 }
 
-class EnumValue extends RtAny {
+struct EnumValue extends RtAny {
     static Call(n?) {
-        static new := Object.Call
+        static new := Struct.Call
         if !IsSet(n)
             return new(this) ; Always a new (mutable) instance.
         if e := this.__item.get(n, 0)
@@ -46,15 +45,15 @@ class EnumValue extends RtAny {
         }
     }
     ; TODO: Projections for flag enums (perhaps space delimited string or method to test for flags by name)
-    s => this.__map[this.n]?.s ?? String(this.n)
+    s => this.__s[this.n] ?? String(this.n)
     ToString() => this.s
 }
 
 _rt_CreateEnumWrapper(t) {
-    static new := Object.Call
+    static new := Struct.Call
     w := _rt_CreateClass(t.Name, EnumValue)
-    t.DefineProp 'Class', {value: w}
-    def(n, v) => w.DefineProp(n, {value: v})
+    DefineProp t, 'Class', {value: w}
+    def(n, v) => DefineProp(w, n, {value: v})
     def '__item', items := Map()
     items.CaseSense := 0
     fields := [t.Fields()*]
@@ -64,9 +63,10 @@ _rt_CreateEnumWrapper(t) {
     def '__basicType', valueField.Type
     static validTypeMap := Map('Int32', 'i32', 'UInt32', 'u32')
     ; n is the actual value of the enum (must be defined before constructing any).
-    w.Prototype.DefineProp 'n', {type: validTypeMap[valueField.Type.Name]}
-    w.Prototype.DefineProp '__map', {value: items}
-    w.Prototype.DefineProp '__value', {get: get_enum_value(this) {
+    DefineProp w.Prototype, 'n', {type: validTypeMap[valueField.Type.Name]}
+    DefineProp w.Prototype, '__map', {value: items}
+    DefineProp w.Prototype, '__s', {value: names := Map()}
+    DefineProp w.Prototype, '__value', {get: get_enum_value(this) {
         ; Never return this; its structured data might be stack-allocated.
         return this.__map[this.n] ?? (e := new(w), e.n := this.n, e)
     }}
@@ -77,7 +77,7 @@ _rt_CreateEnumWrapper(t) {
             continue
         }
         e := new(w), e.n := f.value
-        e.DefineProp 's', {value: f.name}
+        names[f.value] := f.name
         def f.name, items[f.name] := items[f.value] := e
     }
     return w

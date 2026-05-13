@@ -1,11 +1,11 @@
-class GUID {
+struct GUID {
     ptr : 16
     
     static Call(a?) {
         if !IsSet(a)
             return super.Call()
         if a is Integer
-            return a ? StructFromPtr(this, a) : throw(ValueError("Null pointer"))
+            return a ? this.at(a) : throw(ValueError("Null pointer"))
         return (g := super.Call(), g.__value := a, g)
     }
     
@@ -21,7 +21,7 @@ class GUID {
     }
     
     static __new() {
-        this.Prototype.DefineProp 'ToString', {call: GuidToString}
+        DefineProp this.Prototype, 'ToString', {call: GuidToString}
     }
 }
 

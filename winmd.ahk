@@ -276,13 +276,14 @@ class mdNameBuffer extends Buffer {
     ; official WinRT types. This simplifies various functions, which don't have a documented way
     ; to get the required buffer size, and would typically return much shorter strings.
     __new() => (super.__new(1024 * 2), StrPut("", this, "UTF-16"))
-    static __new() {
-        this.Prototype.DefineProp 'ToString', {call: f := StrGet.Bind(,, "UTF-16")}
-    }
+    ; static __new() {
+    ;     DefineProp this.Prototype, 'ToString', {call: StrGet.Bind(,, "UTF-16")}
+    ; }
+    ToString(n?) => StrGet(this, n?, "UTF-16")
 }
 
 class mdBufferlike {
-    ptr : uptr
+    ptr : IntPtr
     size : u32
 }
 

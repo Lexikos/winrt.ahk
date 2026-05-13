@@ -290,7 +290,7 @@ TestCase "RT Delegate parameters", () {
                 if Type(actual) != Type(expected)
                     throw Error(Format('arg {} type {}, expected {}', A_Index, Type(actual), Type(expected)))
                 switch {
-                    case actual is Object && ObjGetDataSize(actual):
+                    case actual is Struct && ObjGetDataSize(actual):
                         equal := structsEqual(actual, expected)
                     case actual is EnumValue && !expected.HasOwnProp('s'):
                         equal := actual.n == expected.n
@@ -298,7 +298,7 @@ TestCase "RT Delegate parameters", () {
                         equal := actual == expected
                 }
                 if !equal {
-                    throw Error(actual is Object
+                    throw Error(IsObject(actual)
                         ? Format('arg {} value not equal ({})', A_Index, Type(actual))
                         : Format('arg {} value "{}", expected "{}"', A_Index, actual, expected))
                 }
@@ -329,7 +329,7 @@ TestCase "RT Delegate return value", () {
         [RtRootTypes.Boolean, 1, 'int*'],
         [RtRootTypes.Boolean, 42, 'int*', 1],
         [RtRootTypes.Char16, "x", 'ushort*', Ord("x")],
-        [RtRootTypes.String, "Hello, world!", RefArgStruct(HString)],
+        [RtRootTypes.String, "Hello, world!", HString.Ptr],
         [JsonArrayType, jarr, 'uptr*', jarr.ptr],
     ]
     for test in return_tests {

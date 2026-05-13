@@ -1,18 +1,16 @@
 AddMethodOverloadTo(obj, name, f, name_prefix:="") {
-    if obj.HasOwnProp(name) {
-        if (pd := obj.GetOwnPropDesc(name)).HasProp('Call')
-            prev := pd.Call
-    }
+    static GetOwnPropDesc := Object.Prototype.GetOwnPropDesc
+    prev := (GetOwnPropDesc(obj, name)?.Call?)
     if IsSet(prev) {
         if !((of := prev) is OverloadedFunc) {
-            obj.DefineProp(name, {Call: of := OverloadedFunc()})
+            DefineProp obj, name, {Call: of := OverloadedFunc()}
             of.Name := name_prefix . name
             of.Add(prev)
         }
         of.Add(f)
     }
     else
-        obj.DefineProp(name, {Call: f})
+        DefineProp obj, name, {Call: f}
 }
 
 class OverloadedFunc {

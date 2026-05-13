@@ -175,44 +175,6 @@ class RefObjPtrAdapter {
     }
 }
 
-RefArgStruct(nt) {
-    ; The value actually passed to DllCall is always a pointer, regardless of nt.
-    static baseClass
-    if !IsSet(baseClass) {
-        baseClass := Class('RefArgStruct')
-        baseClass.Prototype.DefineProp('ptr', {type: 'uptr'})
-    }
-    c := Class('RefArgStruct(' nt.Prototype.__Class ')', baseClass)
-    c.Prototype
-        .DefineProp('__value', {
-            set: RefArgStruct_value_in(this, value?) {
-                if IsSet(value) {
-                    if value is nt
-                        this.ptr := ObjGetDataPtr(value)
-                    else {
-                        this.s := (Object.Call)(nt)
-                        this.r := value
-                        if IsSet(v := %value%?)
-                            %this.s% := v
-                        this.ptr := ObjGetDataPtr(this.s)
-                    }
-                }
-            }
-        })
-        .DefineProp('__delete', {
-            call: HasProp(nt.Prototype, '__value') ? ; Static check for HasProp differentiates undefined __value from => unset.
-                RefArgStruct_value_out1(this) {
-                    if r := (this.r ?? false)
-                        %r% := this.s.__value
-                } :
-                RefArgStruct_value_out2(this) {
-                    if r := (this.r ?? false)
-                        %r% := this.s
-                }
-        })
-    return c
-}
-
 class RtRefType extends RtTypeMod {
     ; TODO: check in/out-ness instead of IsSet
     __new(inner) {
@@ -246,7 +208,7 @@ class RtRefType extends RtTypeMod {
             MsgBox 'DEBUG: RtRefType being constructed for type "' String(inner) '", with unsupported ArgPassInfo properties'
         }
         else if ObjGetDataSize((cls := inner.Class).Prototype) {
-            this.Class := RefArgStruct(cls)
+            this.Class := cls.Ref
             this.ArgPassInfo := false
             return
         }

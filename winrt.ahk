@@ -142,7 +142,7 @@ _rt_WrapInspectable(p, typeinfo:=false) {
     if !p
         return
     ; Wrap early to free on throw.
-    obj := (Object.Call)(RtObject), obj.ptr := p
+    obj := (Struct.Call)(RtObject), obj.ptr := p
     ; IInspectable::GetRuntimeClassName
     hr := ComCall(4, p, "ptr*", &hcls:=0, "int")
     if hr >= 0 {
@@ -203,7 +203,7 @@ _rt_ObjectGetValue(wclass, this) {
             ; Do not rebase 'this' as it would break any future __value assignments (if in a struct).
             ; Instead, return a new wrapper of the type reported by the object.
             typeinfo := WinRT.GetType(cls)
-            ComCall(0, this, 'ptr', typeinfo.GUID, 'ptr*', obj := (Object.Call)(typeinfo.Class))
+            ComCall(0, this, 'ptr', typeinfo.GUID, 'ptr*', obj := (Struct.Call)(typeinfo.Class))
             return obj
         }
     }
@@ -211,10 +211,10 @@ _rt_ObjectGetValue(wclass, this) {
         throw OSError(hr)
     ; It might seem more efficient to return `this`, but it's not useful or safe.
     ; For a delegate parameter, the ptr property itself becomes invalid when the
-    ; delegate returns (because StructFromPtr is used in GetReadersForArgTypes).
+    ; delegate returns (because Struct.at is used in GetReadersForArgTypes).
     ; For an object in a struct (only IReference<T> is valid), it's probably best
     ; to not give the caller a reference to the struct's field.
-    obj := (Object.Call)(wclass), ObjAddRef(obj.ptr := this.ptr)
+    obj := (Struct.Call)(wclass), ObjAddRef(obj.ptr := this.ptr)
     return obj
 }
 
@@ -223,6 +223,6 @@ _rt_GenericGetValue(wclass, this) {
         return unset
     ; Don't rely on GetRuntimeClassName for parameterised interfaces, since it often
     ; returns either the interface name itself (in UWP) or DependencyObject (WinUI3).
-    obj := (Object.Call)(wclass), ObjAddRef(obj.ptr := this.ptr)
+    obj := (Struct.Call)(wclass), ObjAddRef(obj.ptr := this.ptr)
     return obj
 }

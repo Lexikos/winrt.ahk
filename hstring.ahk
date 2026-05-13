@@ -1,10 +1,10 @@
 ; Wraps a HSTRING.  Takes ownership of the handle it is given.
-class HString {
-    ptr : uptr
+struct HString {
+    ptr : IntPtr
     __new(hstr := 0) => this.ptr := hstr
     static __new() {
-        this.Prototype.DefineProp 'ToString', {call: WindowsGetString}
-        this.Prototype.DefineProp '__value', {
+        DefineProp this.Prototype, 'ToString', {call: WindowsGetString}
+        DefineProp this.Prototype, '__value', {
             get: WindowsGetString,
             set: set_hstring(this, value) {
                 value := String(value)
@@ -12,7 +12,7 @@ class HString {
                 this.ptr := WindowsCreateString(value)
             }
         }
-        this.Prototype.DefineProp '__delete', {call: WindowsDeleteString}
+        DefineProp this.Prototype, '__delete', {call: WindowsDeleteString}
         this.Size := A_PtrSize
     }
     static CopyToPtr(value, ptr) {

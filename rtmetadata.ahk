@@ -30,7 +30,7 @@ class MetaDataModule extends mdModule {
     AddIActivationFactoryToWrapper(w, t) {
         ActivateInstance(iid, cls) {
             ; cls.ptr is IActivationFactory*; this calls ActivateInstance.
-            static new := Object.Call
+            static new := Struct.Call
             ComCall(6, cls, 'ptr*', insp := ComValue(13, 0))
             ; insp is not necessarily the default interface of the class.
             ComCall(0, insp, 'ptr', iid, 'ptr*', inst := new(cls))
@@ -41,7 +41,7 @@ class MetaDataModule extends mdModule {
     
     CreateInterfaceWrapper(t) {
         w := _rt_CreateClass(t_name := t.Name, RtObject)
-        t.DefineProp 'Class', {value: w}
+        DefineProp t, 'Class', {value: w}
         this.AddInterfaceToWrapper(w.prototype, t, true)
         this.AddInterfaceCoercion(w.prototype, t)
         wrapped := Map()
@@ -60,7 +60,7 @@ class MetaDataModule extends mdModule {
     
     CreateClassWrapper(t) {
         w := _rt_CreateClass(classname := t.Name, t.SuperType.Class)
-        t.DefineProp 'Class', {value: w}
+        DefineProp t, 'Class', {value: w}
         internalPropCount := ObjOwnPropCount(w)
         ; Add any constructors:
         this.AddFactoriesToWrapper(w, t)
@@ -139,7 +139,7 @@ class MetaDataModule extends mdModule {
         else
             ; @Debug-Output => Interface {t.Name} can't be added because it has no GUID
             return
-        name_prefix := w.HasOwnProp('prototype') ? w.prototype.__class "." : w.__class ".Prototype."
+        name_prefix := (w.prototype?.__class ?? w.__class) "."
         for method in t.Methods() {
             name := nameoverride ? nameoverride : method.name
             types := t.MethodArgTypes(method.sig)
@@ -149,16 +149,16 @@ class MetaDataModule extends mdModule {
                 ; Normal handling would QueryInterface for the class' default interface,
                 ; which would give an external interface instead of the non-delegating one
                 ; which is used inside subclasses.
-                types[-1] := {Class: RefArgStruct(RtObject), ArgPassInfo: false}
+                types[-1] := {Class: RtObject.Ref, ArgPassInfo: false}
             }
             wrapper := MethodWrapper(5 + A_Index, iid, types, name_prefix name)
             if method.flags & 0x400 { ; tdSpecialName
                 switch SubStr(name, 1, 4) {
                 case "get_":
-                    w.DefineProp(SubStr(name, 5), {Get: wrapper})
+                    DefineProp w, SubStr(name, 5), {Get: wrapper}
                     continue
                 case "put_":
-                    w.DefineProp(SubStr(name, 5), {Set: wrapper})
+                    DefineProp w, SubStr(name, 5), {Set: wrapper}
                     continue
                 }
             }
@@ -167,7 +167,7 @@ class MetaDataModule extends mdModule {
     }
     
     AddInterfaceCoercion(w, t) {
-        w.DefineProp('__value', {
+        DefineProp(w, '__value', {
             ; Coerce assigned object/interface pointer to the right interface.
             set: _rt_ObjectSetValue.Bind(t.GUID),
             ; Wrap according to runtime class, if it can vary from t.Class.
@@ -233,7 +233,7 @@ _rt_CacheAttributeCtors(mdi, o, retprop) {
         ; If there are no references to an attribute constructor in the module,
         ; that attribute isn't used, so set -1 (invalid) to avoid reentry.
         loop mrs.Length
-            o.DefineProp names[A_Index], {value: mrs[A_Index] ?? -1}
+            DefineProp o, names[A_Index], {value: mrs[A_Index] ?? -1}
     }
     
     searchFor("Windows.Foundation.Metadata.StaticAttribute"
@@ -279,7 +279,7 @@ MethodWrapper(idx, iid, types, name:=unset) {
         }
         else {
             fri := rettype.Class, proto := fri.Prototype
-            fri := Object.Call.Bind(fri)
+            fri := Struct.Call.Bind(fri)
             if !ObjGetDataSize(proto)
                 ; @Debug-Breakpoint => Unhandled return type {rettype.name} for {name}
                 return (*) => throw(Error("Unhandled return type " String(rettype)))
@@ -301,14 +301,14 @@ MethodWrapper(idx, iid, types, name:=unset) {
         fc := _rt_get_struct_expander(args_to_expand, fc)
     ; Define internal properties for use by _rt_call.
     if IsSet(name)
-        fc.DefineProp 'Name', {value: name}  ; For our use debugging; has no effect on any built-in stuff.
-    fc.DefineProp 'MinParams', pv := {value: 1 + types.Length}  ; +1 for `this`
-    fc.DefineProp 'MaxParams', pv
+        DefineProp fc, 'Name', {value: name}  ; For our use debugging; has no effect on any built-in stuff.
+    DefineProp fc, 'MinParams', pv := {value: 1 + types.Length}  ; +1 for `this`
+    DefineProp fc, 'MaxParams', pv
     ; Compose the ComCall and parameter filters into a function.
     fc := _rt_call.Bind(fc, stn, fri, frr)
     ; Define external properties for use by OverloadedFunc and others.
-    fc.DefineProp 'MinParams', pv
-    fc.DefineProp 'MaxParams', pv
+    DefineProp fc, 'MinParams', pv
+    DefineProp fc, 'MaxParams', pv
     return fc
 }
 
@@ -370,10 +370,10 @@ _rt_call(fc, fa, fri, frr, args*) {
 }
 
 
-class RtAny {
+struct RtAny {
     static __new() {
         if this = RtAny ; Subclasses will inherit it anyway.
-            this.DefineProp('__set', {call: this.prototype.__set})
+            DefineProp(this, '__set', {call: this.prototype.__set})
     }
     static Call(*) {
         throw Error("This class is abstract and cannot be constructed.", -1, this.prototype.__class)
@@ -381,19 +381,20 @@ class RtAny {
     __set(name, *) {
         throw PropertyError(Format('This value of type "{}" has no property named "{}".', type(this), name), -1)
     }
+    static Ref => super.Ptr
 }
 
-class RtObject extends RtAny {
-    ptr : uptr
+struct RtObject extends RtAny {
+    ptr : IntPtr
     __delete() {
         (this.ptr) && ObjRelease(this.ptr)
     }
     static __delete() {
         (this.ptr) && ObjRelease(this.ptr)
     }
-    class Dynamic extends RtObject {
+    struct Dynamic extends RtObject {
         static __new() {
-            this.Prototype.DefineProp('__value', {
+            DefineProp(this.Prototype, '__value', {
                 get: _rt_ObjectGetValue.Bind(this),
                 set: _rt_ObjectSetValueObject
             })
@@ -403,30 +404,30 @@ class RtObject extends RtAny {
 
 _rt_CreateClass(classname, baseclass) {
     w := Class(classname, baseclass)
-    w.DefineProp('ptr', {value: 0}) ; Block unintentional use of baseclass.ptr via inheritence.
+    DefineProp(w, 'ptr', {value: 0}) ; Block unintentional use of baseclass.ptr via inheritence.
     return w
 }
 
 _rt_CreateStructWrapper(t) {
     w := _rt_CreateClass(t.Name, ValueType)
-    t.DefineProp 'Class', {value: w}
+    DefineProp t, 'Class', {value: w}
     wp := w.prototype
     pod := true
     readwriters := Map(), destructors := []
     for f in t.Fields() {
         ft := f.type
         if ft is NumberTypeInfo
-            wp.DefineProp f.name, {type: ft.PropType}
+            DefineProp wp, f.name, {type: ft.PropType}
         else if IsSet(fc := ft.Class?) && ObjGetDataSize(fc.Prototype) {
-            wp.DefineProp f.name, {type: fc}
+            DefineProp wp, f.name, {type: fc}
             pod := false
         }
         else {
             rwi := ReadWriteInfo.ForType(ft)
             fsize := rwi.Size
-            wp.DefineProp f.name, {type: fsize}
+            DefineProp wp, f.name, {type: fsize}
             offset := wp.GetOwnPropDesc(f.name).offset
-            wp.DefineProp f.name, {
+            DefineProp wp, f.name, {
                 get: reader := rwi.GetReader(offset),
                 set: writer := rwi.GetWriter(offset)
             }
@@ -436,8 +437,8 @@ _rt_CreateStructWrapper(t) {
         }
     }
     size_before := ObjGetDataSize(wp)
-    (Object.Call)(w) ; FIXME: verify need to instantiate to finalize structure/size?
-    wp.DefineProp 'Size', {value: ObjGetDataSize(wp)}
+    (Struct.Call)(w) ; FIXME: verify need to instantiate to finalize structure/size?
+    DefineProp wp, 'Size', {value: ObjGetDataSize(wp)}
     size_after := wp.Size
     if destructors.Length {
         struct_delete(destructors, this) {
@@ -454,13 +455,13 @@ _rt_CreateStructWrapper(t) {
                 writer(ptr, reader(this))
             ; FIXME: doesn't copy new-struct-based properties
         }
-        wp.DefineProp 'CopyToPtr', {call: struct_copy.Bind(readwriters)}
-        wp.DefineProp '__delete', {call: struct_delete.Bind(destructors)}
+        DefineProp wp, 'CopyToPtr', {call: struct_copy.Bind(readwriters)}
+        DefineProp wp, '__delete', {call: struct_delete.Bind(destructors)}
     }
     ; FIXME: assignment to non-POD struct
     ; FIXME: assignment to POD struct with nested struct
     if pod
-        wp.DefineProp '__value', {set: _rt_StructSetValuePOD}
+        DefineProp wp, '__value', {set: _rt_StructSetValuePOD}
     return w
 }
 

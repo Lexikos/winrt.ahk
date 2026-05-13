@@ -21,7 +21,7 @@ GetReadersForArgTypes(argTypes) {
         if IsSet(ac := argType.Class?) && (size := ObjGetDataSize(ac.Prototype)) {
             ; FIXME: All classes are required to use __value to return a new instance,
             ; otherwise it is unsafe to retain the struct object after delegate returns.
-            get_arg_value(ac, o, p) => %StructFromPtr(ac, p + o)%
+            get_arg_value(ac, o, p) => %ac.at(p + o)%
             reader := get_arg_value
             readers.Push(reader.Bind(ac, offset))
             offset += A_PtrSize = 4 ? (size + 3) // 4 * 4 : A_PtrSize
@@ -44,8 +44,8 @@ GetReadersForArgTypes(argTypes) {
     return readers
 }
 
-class RtDelegate extends RtAny {
-    ptr : uptr
+struct RtDelegate extends RtAny {
+    ptr : IntPtr
     __delete() {
         (this.ptr) && ObjRelease(this.ptr)
     }
@@ -61,7 +61,7 @@ class RtDelegate extends RtAny {
     }
     static __new() {
         ; delegate : Class(RtDelegate, typeinfo)
-        this.DefineProp '__new', {call: createDelegateClass(this, typeinfo) {
+        DefineProp this, '__new', {call: createDelegateClass(this, typeinfo) {
             ; delegate.Wrap(value) -- first call
             static initialWrapDelegate(typeinfo, this, value) {
                 methods := [typeinfo.Methods()*]
@@ -71,7 +71,7 @@ class RtDelegate extends RtAny {
                 argTypes := typeinfo.MethodArgTypes(method.sig)
                 retType := argTypes.RemoveAt(1)
                 factory := DelegateFactory(typeinfo.GUID, argTypes, retType)
-                this.base.DefineProp('Wrap', {call: wrapDelegate.Bind(factory)})
+                DefineProp(this.base, 'Wrap', {call: wrapDelegate.Bind(factory)})
                 return factory(value)
             }
             ; delegate.Wrap(value) -- subsequent calls
@@ -79,7 +79,7 @@ class RtDelegate extends RtAny {
                 return factory(value)
             }
             this.Prototype.__Class := typeinfo.Name
-            this.Prototype.DefineProp('Wrap', {call: initialWrapDelegate.Bind(typeinfo)})
+            DefineProp this.Prototype, 'Wrap', {call: initialWrapDelegate.Bind(typeinfo)}
         }}
     }
 }
@@ -147,7 +147,7 @@ CreateComMethodCallback(name, argTypes, retType:=false) {
     if !retType || retType == FFITypes.Void
         writeRet := false
     else if IsSet(rc := retType.Class?) && ObjGetDataSize(rc.Prototype)
-        writeRet := return_value(ptr, value) => %StructFromPtr(rc, ptr)% := value
+        writeRet := return_value(ptr, value) => %rc.at(ptr)% := value
     else
         writeRet := ReadWriteInfo.ForType(retType).GetWriter(0)
     retOffset := readers.NativeSize

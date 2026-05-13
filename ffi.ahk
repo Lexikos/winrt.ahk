@@ -11,11 +11,11 @@ class FFITypes {
             [4,  'Int32',  'int'  , 'i32'],
             [4, 'UInt32', 'uint'  , 'u32'],
             [8,  'Int64',  'int64', 'i64'],
-            [8, 'UInt64', 'uint64', 'u64'],
+            [8, 'UInt64', 'uint64', 'i64'],
             [4, 'Single', 'float' , 'f32'],
             [8, 'Double', 'double', 'f64'],
             [A_PtrSize, 'IntPtr', 'ptr', 'iptr'],
-            [A_PtrSize, 'UIntPtr', 'uptr', 'uptr'],
+            [A_PtrSize, 'UIntPtr', 'ptr', 'iptr'],
             ] {
             this.NumTypeSize[t[3]] := t[1]
             this.%t[2]% := NumberTypeInfo(t*)
@@ -97,7 +97,7 @@ class NumberTypeInfo extends BasicTypeInfo {
     }
 }
 
-class RtBoolean {
+struct RtBoolean extends ValueType {
     v : u8
     __value {
         get => this.v
@@ -105,7 +105,7 @@ class RtBoolean {
     }
 }
 
-class RtChar16 {
+struct RtChar16 extends ValueType {
     v : u16
     __value {
         get => Chr(this.v)
