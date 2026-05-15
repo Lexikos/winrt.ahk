@@ -64,7 +64,6 @@ class RtTypeInfo {
         ; Just for identification. Attributes are only used in metadata.
     }
     
-    ArgPassInfo => false
     static Prototype.IsSealed := false
     
     Name => this.ToString()
@@ -152,7 +151,6 @@ class RtTypeMod extends RtDecodedType {
 }
 
 class RtPtrType extends RtTypeMod {
-    ArgPassInfo => ArgPassInfo.Unsupported
     ToString() => String(this.inner) "*"
 }
 
@@ -186,9 +184,6 @@ class RtRefType extends RtTypeMod {
         this.Class := cls.Ref ?? cls.Ptr
         
     }
-    ArgPassInfo => false
-    ScriptToNative => (&v) => isSet(v) ? &v : &v := 0
-    NativeType => this.inner.NativeType '*'
     ToString() => String(this.inner) "&"
 }
 
@@ -198,7 +193,6 @@ class RtArrayType extends RtTypeMod {
         ; These properties are unlikely to be used for WinRT, but are used for Win32metadata.
         this.rank := rank, this.size := size, this.lbound := lbound
     }
-    ArgPassInfo => ArgPassInfo.Unsupported
     ubound[n] => this.size[n] - (this.lbound[n] ?? 0) - 1
     ToString() {
         s := String(this.inner) "["

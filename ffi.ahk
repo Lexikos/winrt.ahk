@@ -81,14 +81,12 @@ class BasicTypeInfo {
     }
     ToString() => this.Name
     FundamentalType => this
-    static prototype.ArgPassInfo := false
 }
 
 class NumberTypeInfo extends BasicTypeInfo {
     __new(size, name, nt, pt) {
         this.Name := name
         this.Size := size
-        this.ArgPassInfo := ArgPassInfo(nt, false, false)
         this.Class := pt
         this.ArgType := nt
     }
@@ -108,19 +106,4 @@ struct RtChar16 extends ValueType {
         get => Chr(this.v)
         set => this.v := Ord(value)
     }
-}
-
-class ArgPassInfo {
-    /*
-    ScriptToNative := (scriptValue) => nativeValue
-    NativeToScript := (nativeValue) => scriptValue
-    NativeType := Ptr | Int | UInt | ...
-    */
-    __new(nt, stn, nts) {
-        this.NativeType := nt
-        this.ScriptToNative := stn
-        this.NativeToScript := nts
-    }
-    
-    static Unsupported := this('Unsupported', false, false)
 }

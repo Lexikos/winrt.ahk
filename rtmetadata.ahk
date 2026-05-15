@@ -149,7 +149,7 @@ class MetaDataModule extends mdModule {
                 ; Normal handling would QueryInterface for the class' default interface,
                 ; which would give an external interface instead of the non-delegating one
                 ; which is used inside subclasses.
-                types[-1] := {Class: RtObject.Ref, ArgPassInfo: false}
+                types[-1] := {Class: RtObject.Ref}
             }
             wrapper := MethodWrapper(5 + A_Index, iid, types, name_prefix name)
             if method.flags & 0x400 { ; tdSpecialName
