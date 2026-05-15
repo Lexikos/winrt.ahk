@@ -251,92 +251,42 @@ _rt_CacheAttributeCtors(mdi, o, retprop) {
 
 MethodWrapper(idx, iid, types, name:=unset) {
     rettype := types.RemoveAt(1)
-    cca := [] ;, cca.Length := 1 + 2*types.Length, ccac := 0
-    stn := Map()
-    if iid
-        stn[1] := ComObjQuery.Bind( , iid)
-    args_to_expand := Map()
+    cca := []
     for t in types {
-        if pass := t.ArgPassInfo {
-            if pass.ScriptToNative
-                stn[1 + A_Index] := pass.ScriptToNative
-            cca.Push( , pass.NativeType)
-        }
-        else if ObjGetDataSize((tcls := t.Class).Prototype) {
+        if IsSet(tcls := t.Class?)
             cca.Push( , tcls)
-        }
         else {
-            ; @Debug-Breakpoint => Unhandled arg type {t.name} for {name}
-            return (*) => throw(Error("Unhandled arg type " String(t)))
+            ; TODO: Array arg support
+            return ((ts, *) => throw(Error("Unsupported arg type " ts, -1))).Bind(String(t))
         }
     }
     ; rettype from metadata translates to a ref out parameter at the end.
     if rettype != FFITypes.Void {
-        if pass := rettype.ArgPassInfo {
-            fri := () => &newvarref := 0 ; Construct a VarRef for ComCall to write into.
-            cca.Push( , pass.NativeType '*') ; Instruct ComCall to pass the value by address.
-            frr := ((nts, &ref) => nts(ref)).Bind(pass.NativeToScript || Number) ; &ref parameter derefs the VarRef.
-        }
-        else {
-            fri := rettype.Class, proto := fri.Prototype
-            fri := Struct.Call.Bind(fri)
-            if !ObjGetDataSize(proto)
-                ; @Debug-Breakpoint => Unhandled return type {rettype.name} for {name}
-                return (*) => throw(Error("Unhandled return type " String(rettype)))
-            ; Use 'ptr*' for classes where 'ptr' property is the value itself, otherwise
-            ; the function will write to the wrong place (e.g. corrupt the HSTRING).
-            ; This currently assumes 'ptr' is either the ONLY field or not a field.
-            ; Integer check allows `ptr : 16` and similar (e.g. for GUID).
-            ptrtype := GetPropDescProp(proto, 'ptr', 'type') ?? 0
-            cca.Push( , !(ptrtype is Integer) ? 'ptr*' : 'ptr')
-            frr := GetPropGet(proto, '__value') ?? false
-        }
+        if rettype is NumberTypeInfo {
+            fri := [0]
+            cca.Push( , rettype.ArgType '*') ; Instruct ComCall to pass the value by address.
+        } else if IsSet(rc := rettype.Class?) {
+            fri := [unset]
+            cca.Push( , rettype.Class.Ref ?? rettype.Class.Ptr)
+        } else
+            return (*) => throw(Error("Unhandled return type " String(rettype)))
     }
     else {
-        frr := fri := false
+        fri := false
     }
     ; Build the core ComCall function with predetermined type parameters.
     fc := ComCall.Bind(idx, cca*)
-    if args_to_expand.Count
-        fc := _rt_get_struct_expander(args_to_expand, fc)
     ; Define internal properties for use by _rt_call.
     if IsSet(name)
         DefineProp fc, 'Name', {value: name}  ; For our use debugging; has no effect on any built-in stuff.
     DefineProp fc, 'MinParams', pv := {value: 1 + types.Length}  ; +1 for `this`
     DefineProp fc, 'MaxParams', pv
     ; Compose the ComCall and parameter filters into a function.
-    fc := _rt_call.Bind(fc, stn, fri, frr)
+    fc := _rt_call.Bind(fc, iid, fri)
     ; Define external properties for use by OverloadedFunc and others.
     DefineProp fc, 'MinParams', pv
     DefineProp fc, 'MaxParams', pv
     return fc
-}
-
-
-_rt_get_struct_expander(sizes, fc) {
-    ; Map the incoming parameter index and size to outgoing parameter index and size.
-    ismap := Map(), offset := 0
-    for i, size in sizes {
-        ismap[i + offset] := size
-        offset += Ceil(size / A_PtrSize) - 1
-    }
-    return _rt_expand_struct_args.Bind(ismap, fc)
-}
-
-_rt_expand_struct_args(ismap, fc, args*) {
-    for i, size in ismap {
-        ; Removing struct from args shouldn't cause its destructor to be called (when this
-        ; function returns) because it should still be on the caller's stack.  For simple
-        ; structs it doesn't matter either way, because their values are copied here.
-        struct := args.RemoveAt(i), new_args := []
-        ; This specifically allows NumGet to read past the end of the struct when the size
-        ; is not a multiple of A_PtrSize, with the additional bytes being "undefined".
-        ptr := struct.ptr, endptr := ptr + struct.size
-        while ptr < endptr
-            new_args.Push(NumGet(ptr, 'ptr')), ptr += A_PtrSize
-        args.InsertAt(i, new_args*)
-    }
-    return fc(args*)
 }
 
 _rt_rethrow(fc, e) {
@@ -355,15 +305,15 @@ _rt_rethrow(fc, e) {
     throw
 }
 
-_rt_call(fc, fa, fri, frr, args*) {
+_rt_call(fc, iid, fri, args*) {
     try {
         if args.Length != fc.MinParams
             throw Error(Format('Too {} parameters passed to function {}.', args.Length < fc.MinParams ? 'few' : 'many', fc.Name), -1)
-        for i, f in fa
-            args[i] := f(args[i])
-        (fri) && args.Push(fri())
+        (iid) && args[1] := ComObjQuery(args[1], iid)
+        (fri) && args.Push(&retval := fri[1]?)
         fc(args*)
-        return frr ? (frr(args.Pop())?) : fri ? args.Pop() : ""
+        if fri
+            return (retval?)
     } catch OSError as e {
         _rt_rethrow(fc, e)
     }
