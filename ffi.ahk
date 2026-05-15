@@ -82,16 +82,13 @@ class BasicTypeInfo {
     ToString() => this.Name
     FundamentalType => this
     static prototype.ArgPassInfo := false
-    static prototype.ReadWriteInfo := false
 }
 
 class NumberTypeInfo extends BasicTypeInfo {
     __new(size, name, nt, pt) {
         this.Name := name
         this.Size := size
-        this.ReadWriteInfo := ReadWriteInfo.FromArgPassInfo(
-            this.ArgPassInfo := ArgPassInfo(nt, false, false)
-        )
+        this.ArgPassInfo := ArgPassInfo(nt, false, false)
         this.Class := pt
         this.ArgType := nt
     }
@@ -126,42 +123,4 @@ class ArgPassInfo {
     }
     
     static Unsupported := this('Unsupported', false, false)
-}
-
-class ReadWriteInfo {
-    /*
-    GetReader(offset:=0)
-    GetWriter(offset:=0)
-    GetDeleter(offset:=0)
-    Size => Integer
-    */
-    
-    static ForType(typeinfo) {
-        return typeinfo.ReadWriteInfo
-            || (api := typeinfo.ArgPassInfo) && this.FromArgPassInfo(api)
-            || throw(Error("No ReadWriteInfo for type " typeinfo.Name))
-    }
-    
-    class FromArgPassInfo extends ReadWriteInfo {
-        __new(api) {
-            this.api := api
-            this.Size := FFITypes.NumTypeSize[api.NativeType]
-        }
-        
-        GetReader(offset:=0) => (
-            f := this.api.NativeToScript,
-            nt := this.api.NativeType,
-            f ? (ptr) => f(NumGet(ptr, offset, nt))
-              : (ptr) =>  (NumGet(ptr, offset, nt))
-        )
-        
-        GetWriter(offset:=0) => (
-            f := this.api.ScriptToNative,
-            nt := this.api.NativeType,
-            f ? (ptr, value) => NumPut(nt, f(value), ptr, offset)
-              : (ptr, value) => NumPut(nt,  (value), ptr, offset)
-        )
-        
-        GetDeleter(offset:=0) => false
-    }
 }

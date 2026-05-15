@@ -65,7 +65,6 @@ class RtTypeInfo {
     }
     
     ArgPassInfo => false
-    ReadWriteInfo => false
     static Prototype.IsSealed := false
     
     Name => this.ToString()
