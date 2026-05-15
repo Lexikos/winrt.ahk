@@ -413,50 +413,11 @@ _rt_CreateStructWrapper(t) {
     DefineProp t, 'Class', {value: w}
     wp := w.prototype
     pod := true
-    readwriters := Map(), destructors := []
     for f in t.Fields() {
         ft := f.type
-        if ft is NumberTypeInfo
-            DefineProp wp, f.name, {type: ft.Class}
-        else if IsSet(fc := ft.Class?) && ObjGetDataSize(fc.Prototype) {
-            DefineProp wp, f.name, {type: fc}
+        DefineProp wp, f.name, {type: ft.Class}
+        if !(ft is NumberTypeInfo)
             pod := false
-        }
-        else {
-            rwi := ReadWriteInfo.ForType(ft)
-            fsize := rwi.Size
-            DefineProp wp, f.name, {type: fsize}
-            offset := wp.GetOwnPropDesc(f.name).offset
-            DefineProp wp, f.name, {
-                get: reader := rwi.GetReader(offset),
-                set: writer := rwi.GetWriter(offset)
-            }
-            readwriters[reader] := writer
-            if fd := rwi.GetDeleter(offset)
-                destructors.Push(fd)
-        }
-    }
-    size_before := ObjGetDataSize(wp)
-    (Struct.Call)(w) ; FIXME: verify need to instantiate to finalize structure/size?
-    DefineProp wp, 'Size', {value: ObjGetDataSize(wp)}
-    size_after := wp.Size
-    if destructors.Length {
-        struct_delete(destructors, this) {
-            for d in destructors
-                try
-                    d(this)
-                catch as e ; Ensure all destructors are called ...
-                    thrown := e
-            if IsSet(thrown)
-                throw thrown ; ... and the last error is reported.
-        }
-        struct_copy(readwriters, this, ptr) {
-            for reader, writer in readwriters
-                writer(ptr, reader(this))
-            ; FIXME: doesn't copy new-struct-based properties
-        }
-        DefineProp wp, 'CopyToPtr', {call: struct_copy.Bind(readwriters)}
-        DefineProp wp, '__delete', {call: struct_delete.Bind(destructors)}
     }
     ; FIXME: assignment to non-POD struct
     ; FIXME: assignment to POD struct with nested struct
