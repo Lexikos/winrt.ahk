@@ -175,48 +175,18 @@ class RefObjPtrAdapter {
 }
 
 class RtRefType extends RtTypeMod {
-    ; TODO: check in/out-ness instead of IsSet
     __new(inner) {
         super.__new(inner)
-        if (inner.typeArgs ?? 0) && inner.typeArgs[1] is RtTypeArg {
-            this.ArgPassInfo := ArgPassInfo.Unsupported
+        if (inner.typeArgs ?? 0) && inner.typeArgs[1] is RtTypeArg
+            || !IsSet(cls := inner.Class?) {
+            static Unclass := Class('UnsupportedType', Struct)
+            this.Class := Unclass
             return ; Incomplete generic type (not usable at runtime)
         }
-        if api := inner.ArgPassInfo {
-            numberRef_ScriptToNative(&v) => isSet(v) ? &v : &v := 0
-            refPtrType_ScriptToNative(a, v) => v = 0 && v is Integer ? v : a(v)
-            canTreatAsPtr(nt) {
-                return nt != 'float' && nt != 'double' && (A_PtrSize = 8 || !InStr(nt, '64'))
-            }
-            if api.NativeToScript && canTreatAsPtr(api.NativeType) {
-                this.ArgPassInfo := ArgPassInfo(
-                    'Ptr*',
-                    refPtrType_ScriptToNative.Bind(ObjBindMethod(RefObjPtrAdapter,, api.ScriptToNative, api.NativeToScript)),
-                    false
-                )
-                return
-            }
-            else if !(api.ScriptToNative || api.NativeToScript) {
-                this.ArgPassInfo := ArgPassInfo(
-                    api.NativeType '*',
-                    numberRef_ScriptToNative,
-                    false
-                )
-                return
-            }
-            MsgBox 'DEBUG: RtRefType being constructed for type "' String(inner) '", with unsupported ArgPassInfo properties'
-        }
-        else if ObjGetDataSize((cls := inner.Class).Prototype) {
-            this.Class := cls.Ref
-            this.ArgPassInfo := false
-            return
-        }
-        else if !(inner is RtTypeInfo.Struct) && inner != RtRootTypes.Guid {
-            MsgBox 'DEBUG: RtRefType being constructed for type "' String(inner) '", which has no ArgPassInfo'
-        }
-        ; TODO: perform type checking in ScriptToNative
-        this.ArgPassInfo := FFITypes.IntPtr.ArgPassInfo
+        this.Class := cls.Ref ?? cls.Ptr
+        
     }
+    ArgPassInfo => false
     ScriptToNative => (&v) => isSet(v) ? &v : &v := 0
     NativeType => this.inner.NativeType '*'
     ToString() => String(this.inner) "&"
