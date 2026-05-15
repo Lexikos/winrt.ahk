@@ -417,7 +417,7 @@ _rt_CreateStructWrapper(t) {
     for f in t.Fields() {
         ft := f.type
         if ft is NumberTypeInfo
-            DefineProp wp, f.name, {type: ft.PropType}
+            DefineProp wp, f.name, {type: ft.Class}
         else if IsSet(fc := ft.Class?) && ObjGetDataSize(fc.Prototype) {
             DefineProp wp, f.name, {type: fc}
             pod := false

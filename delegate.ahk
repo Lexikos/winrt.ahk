@@ -1,49 +1,6 @@
 #include guid.ahk
 #include util.ahk
 
-/*
-CreateTypedCallback(fn, opt, argTypes) {
-    local readers := GetReadersForArgTypes(argTypes)
-    typed_callback(argPtr) {
-        args := []
-        for r in readers {
-            args.Push(r(argPtr))
-        }
-        return fn(args*)
-    }
-    return CallbackCreate(typed_callback, opt "&", readers.NativeSize // A_PtrSize)
-}
-*/
-
-GetReadersForArgTypes(argTypes) {
-    readers := [], offset := 0
-    for argType in argTypes {
-        if IsSet(ac := argType.Class?) && (size := ObjGetDataSize(ac.Prototype)) {
-            ; FIXME: All classes are required to use __value to return a new instance,
-            ; otherwise it is unsafe to retain the struct object after delegate returns.
-            get_arg_value(ac, o, p) => %ac.at(p + o)%
-            reader := get_arg_value
-            readers.Push(reader.Bind(ac, offset))
-            offset += A_PtrSize = 4 ? (size + 3) // 4 * 4 : A_PtrSize
-            continue
-        }
-        rwi := ReadWriteInfo.ForType(argType)
-        if rwi.Size > 8 && 8 = A_PtrSize {
-            ; Structs larger than 8 bytes are passed by address on x64.
-            deref_and_read(r, o, p) => r(NumGet(p, o, "ptr"))
-            reader := deref_and_read.Bind(rwi.GetReader(0), offset)
-            offset += A_PtrSize
-        }
-        else {
-            reader := rwi.GetReader(offset)
-            offset += A_PtrSize = 4 ? (rwi.Size + 3) // 4 * 4 : A_PtrSize
-        }
-        readers.Push(reader)
-    }
-    readers.NativeSize := offset
-    return readers
-}
-
 struct RtDelegate extends RtAny {
     ptr : IntPtr
     __delete() {
@@ -143,23 +100,21 @@ CreateComMethodTable(callbacks, iid) {
 }
 
 CreateComMethodCallback(name, argTypes, retType:=false) {
-    readers := GetReadersForArgTypes(argTypes)
-    if !retType || retType == FFITypes.Void
-        writeRet := false
-    else if IsSet(rc := retType.Class?) && ObjGetDataSize(rc.Prototype)
-        writeRet := return_value(ptr, value) => %rc.at(ptr)% := value
-    else
-        writeRet := ReadWriteInfo.ForType(retType).GetWriter(0)
-    retOffset := readers.NativeSize
-    interface_method(argPtr) {
+    types := [IntPtr]
+    for t in argTypes
+        types.Push(t.Class)
+    if retType == FFITypes.Void
+        retType := false
+    if retType
+        types.Push(retType.Class.Ref ?? retType.Class.Ptr)
+    types.Push(UInt32)
+    interface_method(thisPtr, args*) {
         try {
-            obj := ObjFromPtrAddRef(NumGet(NumGet(argPtr, 'ptr'), A_PtrSize * 2, 'ptr'))
-            argPtr += A_PtrSize
-            args := []
-            for readArg in readers
-                args.Push(readArg(argPtr))
-            retval := obj.%name%(args*)
-            (writeRet) && writeRet(NumGet(argPtr, retOffset, 'ptr'), retval)
+            obj := ObjFromPtrAddRef(NumGet(thisPtr, A_PtrSize * 2, 'ptr'))
+            if retType
+                args.Pop().__value := obj.%name%(args*)
+            else
+                obj.%name%(args*)
         }
         catch Any as e {
             ; @Debug-Output => {e.__Class} thrown in method {name}: {e.Message}
@@ -168,5 +123,5 @@ CreateComMethodCallback(name, argTypes, retType:=false) {
         }
         return 0
     }
-    return CallbackCreate(interface_method, "&", retOffset // A_PtrSize + (retType ? 2 : 1))
+    return CallbackCreate(interface_method,, types)
 }

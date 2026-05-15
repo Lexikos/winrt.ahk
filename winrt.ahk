@@ -209,9 +209,7 @@ _rt_ObjectGetValue(wclass, this) {
     }
     else if hr != -2147467263 ; E_NOTIMPL
         throw OSError(hr)
-    ; It might seem more efficient to return `this`, but it's not useful or safe.
-    ; For a delegate parameter, the ptr property itself becomes invalid when the
-    ; delegate returns (because Struct.at is used in GetReadersForArgTypes).
+    ; TODO: Verify whether it is safe to return `this` instead.
     ; For an object in a struct (only IReference<T> is valid), it's probably best
     ; to not give the caller a reference to the struct's field.
     obj := (Struct.Call)(wclass), ObjAddRef(obj.ptr := this.ptr)
